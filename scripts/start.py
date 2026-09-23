@@ -17,6 +17,10 @@ def main():
     if not 1024 <= args.port <= 65535:
         parser.error("Порт должен быть от 1024 до 65535")
     os.chdir(ROOT)
+    # Keep bytecode outside cloud-synced project folders (e.g. iCloud Documents).
+    os.environ.setdefault(
+        "PYTHONPYCACHEPREFIX", str(Path.home() / ".cache" / "hackalem" / "python-cache")
+    )
     result = subprocess.run([sys.executable, str(ROOT / "scripts/doctor.py")])
     if result.returncode:
         return result.returncode
