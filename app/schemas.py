@@ -71,6 +71,6 @@ class TaskMove(BaseModel):
 
 
 class ProcessRequest(BaseModel):
-    stage: Literal["transcribe", "diarize", "analyze"]
+    stage: Literal["prepare", "transcribe", "diarize", "analyze"]
     language: Literal["kk", "ru", "auto", "ru_kk"] = "kk"
     num_speakers: int | None = Field(default=None, ge=2, le=20)

@@ -294,20 +294,24 @@ def analyze(m):
     m["status"] = "ready"
 
 
-def run(ident, stage):
+def run(ident, stage, combined=False):
     global _progress
     m = store.get(ident)
     if not m:
         raise ValueError("Meeting not found")
     started = time.monotonic()
-    m.update(status="processing", stage=stage, error=None)
+    m.update(status="processing", stage="prepare" if combined else stage, error=None)
     store.save(m)
-    _progress = Progress(m, stage)
+    _progress = Progress(m, stage, combined)
     report(0, "Подготовка", stage != "transcribe", True)
     try:
         {"transcribe": transcribe, "diarize": diarize, "analyze": analyze}[stage](m)
         m.setdefault("timings", {})[stage] = round(time.monotonic() - started, 1)
-        _progress.complete()
+        if combined and stage == "transcribe":
+            m["status"] = "processing"
+            report(100, "Готово; переход к разделению голосов", True, True)
+        else:
+            _progress.complete()
     except Exception as exc:
         # Avoid persisting URLs, access tokens or model output from library exceptions.
         m.update(
@@ -323,4 +327,4 @@ def run(ident, stage):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1], sys.argv[2])
+    run(sys.argv[1], sys.argv[2], "--combined" in sys.argv[3:])

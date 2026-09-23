@@ -29,6 +29,7 @@ const statuses = {
   error: "Нужна проверка",
 };
 const stages = {
+  prepare: "Речь и голоса",
   transcribe: "Распознаём речь",
   diarize: "Разделяем говорящих",
   analyze: "Готовим протокол",
@@ -143,7 +144,7 @@ function renderDetail() {
  ${m.error ? `<div class="notice error" role="alert">${esc(m.error)}</div>` : ""}
  <div class="panel"><div class="panel-title"><h3>Обработка записи</h3><span class="meta">Последовательно · на вашем Mac</span></div><div class="pipeline">
  <select id="language" aria-label="Язык распознавания" ${isBusy ? "disabled" : ""}><option value="kk" ${m.language === "kk" || !m.language ? "selected" : ""}>Казахский + RU</option><option value="ru" ${m.language === "ru" ? "selected" : ""}>Русский + ҚАЗ</option><option value="ru_kk" ${m.language === "ru_kk" ? "selected" : ""}>Сравнить ҚАЗ / RU · два прохода</option><option value="auto" ${m.language === "auto" ? "selected" : ""}>Автоопределение</option></select>
- <button class="primary" data-stage="transcribe" ${isBusy ? "disabled" : ""}>1. Распознать</button><span class="meta">→</span><button class="secondary" data-stage="diarize" ${isBusy || !hasText ? "disabled" : ""}>2. Разделить голоса</button><span class="meta">→</span><button class="secondary" data-stage="analyze" ${isBusy || !hasText ? "disabled" : ""}>3. Создать протокол</button></div>
+ <button class="primary" data-stage="prepare" ${isBusy ? "disabled" : ""}>1. Распознать и разделить голоса</button><span class="meta">→</span><button class="secondary" data-stage="analyze" ${isBusy || !hasText ? "disabled" : ""}>2. Создать протокол</button></div>
  ${
    isBusy
      ? ""
@@ -161,7 +162,7 @@ function renderDetail() {
        `<label class="speaker-edit">${esc(id)}<input data-speaker-name="${esc(id)}" value="${esc(name)}" maxlength="200" ${isBusy ? "disabled" : ""}></label>`,
    )
    .join("")}</div></details>
- ${hasText && !m.diarized ? '<p class="small-note">Голоса ещё не разделены автоматически. Можно запустить этап 2.</p>' : ""}
+ ${hasText && !m.diarized ? '<p class="small-note">Голоса ещё не разделены автоматически. Запустите «Распознать и разделить голоса».</p>' : ""}
  <div class="transcript-list">${
    m.segments
      .map(
@@ -421,7 +422,7 @@ document.addEventListener("click", async (e) => {
     if (button.dataset.stage) {
       if (state.dirty) throw Error("Сначала сохраните изменения");
       if (
-        button.dataset.stage === "transcribe" &&
+        ["transcribe", "prepare"].includes(button.dataset.stage) &&
         state.current.segments.length &&
         !confirm(
           "Повторное распознавание заменит текст и протокол. Продолжить?",

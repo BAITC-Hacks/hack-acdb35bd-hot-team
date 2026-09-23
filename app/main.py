@@ -32,6 +32,22 @@ mutation_lock = store.mutation_lock
 active_process = None
 
 
+def run_job(ident, stage):
+    global active_process
+    steps = ("transcribe", "diarize") if stage == "prepare" else (stage,)
+    for step in steps:
+        command = [sys.executable, "-m", "app.worker", ident, step]
+        if stage == "prepare":
+            command.append("--combined")
+        active_process = subprocess.Popen(command, cwd=ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if active_process.wait(timeout=7200):
+            raise RuntimeError("Worker stopped")
+        result = store.get(ident)
+        if not result or result["status"] == "error":
+            break
+
+
 def process_jobs():
     global active_process
     while True:
@@ -40,14 +56,7 @@ def process_jobs():
             return
         ident, stage = job
         try:
-            active_process = subprocess.Popen(
-                [sys.executable, "-m", "app.worker", ident, stage],
-                cwd=ROOT,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if active_process.wait(timeout=7200):
-                raise RuntimeError("Worker stopped")
+            run_job(ident, stage)
         except Exception:
             if active_process and active_process.poll() is None:
                 active_process.kill()
@@ -304,12 +313,11 @@ def process(ident: str, body: ProcessRequest):
     with mutation_lock:
         m = meeting(ident)
         editable(m)
-        if body.stage != "transcribe" and not m["segments"]:
+        if body.stage not in ("transcribe", "prepare") and not m["segments"]:
             raise HTTPException(409, "Сначала получите транскрипт")
-        repo = {"transcribe": ASR_MODEL, "diarize": DIAR_MODEL, "analyze": LLM_MODEL}[
-            body.stage
-        ]
-        if not available(repo):
+        repos = [ASR_MODEL, DIAR_MODEL] if body.stage == "prepare" else [
+            {"transcribe": ASR_MODEL, "diarize": DIAR_MODEL, "analyze": LLM_MODEL}[body.stage]]
+        if not all(available(repo) for repo in repos):
             raise HTTPException(
                 409,
                 "Модель ещё не скачана. Выполните scripts/download_models.py по README.",
