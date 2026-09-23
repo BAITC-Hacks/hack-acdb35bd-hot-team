@@ -26,6 +26,11 @@ def main():
         return result.returncode
     try:
         with socket.socket() as sock:
+            # Match uvicorn's POSIX socket setup: TIME_WAIT after a restart
+            # must not be mistaken for a running server. Avoid Windows reuse
+            # semantics, which can allow binding over another process.
+            if os.name != "nt":
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", args.port))
     except OSError:
         print(
