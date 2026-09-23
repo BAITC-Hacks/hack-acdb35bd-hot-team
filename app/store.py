@@ -3,6 +3,7 @@ import threading
 
 mutation_lock = threading.RLock()
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from .config import DATA
 
@@ -23,15 +24,27 @@ def init():
         rows = con.execute("SELECT id, body FROM meetings").fetchall()
         for ident, body in rows:
             m = json.loads(body)
+            changed = ensure_task_ids(m)
             if m.get("status") in ("queued", "processing"):
                 m.update(
                     status="error",
                     error="Обработка прервана перезапуском. Запустите этап повторно.",
                 )
+                changed = True
+            if changed:
                 con.execute(
                     "UPDATE meetings SET body=? WHERE id=?",
                     (json.dumps(m, ensure_ascii=False), ident),
                 )
+
+
+def ensure_task_ids(m):
+    changed = False
+    for task in (m.get("protocol") or {}).get("tasks", []):
+        if not task.get("id"):
+            task["id"] = uuid.uuid4().hex
+            changed = True
+    return changed
 
 
 def get(ident):
@@ -41,6 +54,7 @@ def get(ident):
 
 
 def save(m):
+    ensure_task_ids(m)
     m["updated_at"] = datetime.now(timezone.utc).isoformat()
     with connect() as con:
         con.execute(

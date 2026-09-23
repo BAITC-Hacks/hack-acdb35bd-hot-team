@@ -191,7 +191,7 @@ function renderDetail() {
 }
 function taskHTML(t, i, m) {
   const source = m.segments.find((s) => t.source_ids.includes(s.id));
-  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
+  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>К выполнению</option><option value="in_progress" ${t.status === "in_progress" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
 }
 function readProtocol() {
   const original = state.current.protocol;
@@ -258,28 +258,73 @@ async function saveProtocol(approved = false) {
   renderDetail();
   toast(approved ? "Протокол подтверждён" : "Черновик сохранён");
 }
+const taskColumns = {open: "К выполнению", in_progress: "В работе", done: "Выполнено"};
+let boardTasks = [], boardMoving = false, draggedTask = null;
 async function showTasks() {
   if (!mayLeave()) return;
   showView("tasks");
   $("#all-tasks").innerHTML = '<p class="placeholder">Загружаем поручения…</p>';
-  const meetings = await api("/api/meetings");
-  const details = await Promise.all(
-    meetings
-      .filter((m) => m.task_count > 0)
-      .map((m) => api(`/api/meetings/${m.id}`)),
-  );
-  const today = new Date().toLocaleDateString("en-CA");
-  $("#all-tasks").innerHTML =
-    details
-      .flatMap((m) =>
-        (m.protocol?.tasks || []).map(
-          (t) =>
-            `<article class="all-task"><h3>${esc(t.title)}</h3><div class="meta">${esc(t.owner || "Ответственный не указан")} · <span class="${t.due_date && t.due_date < today && t.status !== "done" ? "overdue" : ""}">${esc(t.due_date || t.deadline_text || "Срок не указан")}</span> · ${t.status === "done" ? "Выполнено" : "В работе"}${t.needs_review ? " · Требует проверки" : ""}</div><div class="actions"><button class="text-btn" data-meeting="${m.id}">${esc(m.title)} ↗</button></div></article>`,
-        ),
-      )
-      .join("") ||
-    '<div class="empty-state"><h2>Поручений пока нет</h2><p>Они появятся после подготовки протокола встречи.</p></div>';
+  await refreshBoard();
 }
+async function refreshBoard(quiet = false) {
+  const rows = await api("/api/tasks");
+  if (state.view !== "tasks") return;
+  if (quiet && JSON.stringify(rows) === JSON.stringify(boardTasks)) return;
+  boardTasks = rows;
+  renderBoard();
+}
+function renderBoard() {
+  const query = $("#task-search").value.trim().toLocaleLowerCase();
+  const tasks = boardTasks.filter(t => [t.title, t.owner, t.meeting_title].some(v => (v || "").toLocaleLowerCase().includes(query)));
+  const today = new Date().toLocaleDateString("en-CA");
+  $("#board-count").textContent = `${tasks.length} поручений · ${tasks.filter(t => !t.approved || t.needs_review).length} требуют подтверждения`;
+  $("#all-tasks").innerHTML = `<div class="kanban-board">${Object.entries(taskColumns).map(([status,label]) => {
+    const rows = tasks.filter(t => (t.status || "open") === status);
+    return `<section class="kanban-column" data-column="${status}" aria-label="${label}"><div class="kanban-heading"><h2>${label}</h2><span class="badge">${rows.length}</span></div><div class="kanban-cards">${rows.map(t => {
+      const locked = !t.approved || t.needs_review || t.busy || boardMoving;
+      const overdue = t.due_date && t.due_date < today && t.status !== "done";
+      return `<article class="kanban-card" draggable="${!locked}" data-board-task="${t.id}" data-board-meeting="${t.meeting_id}"><h3>${esc(t.title)}</h3><p class="meta">${esc(t.owner || "Исполнитель не указан")}</p><p class="${overdue ? "overdue" : "meta"}">${overdue ? "Просрочено · " : "Срок · "}${esc(t.due_date || t.deadline_text || "не указан")}</p>${!t.approved || t.needs_review ? '<p class="small-note">Черновик · подтвердите протокол встречи</p>' : ""}${t.busy ? '<p class="small-note">Встреча обрабатывается</p>' : ""}<button class="text-btn kanban-source" data-meeting="${t.meeting_id}">${esc(t.meeting_title)} ↗</button><label class="kanban-status">Статус<select data-board-status aria-label="Статус: ${esc(t.title)}" ${locked ? "disabled" : ""}>${Object.entries(taskColumns).map(([value,text]) => `<option value="${value}" ${value === t.status ? "selected" : ""}>${text}</option>`).join("")}</select></label></article>`;
+    }).join("") || '<p class="kanban-empty">Пока нет поручений</p>'}</div></section>`;
+  }).join("")}</div>`;
+}
+async function moveBoardTask(meeting, id, status) {
+  if (boardMoving) return;
+  const task = boardTasks.find(t => t.id === id && t.meeting_id === meeting);
+  if (!task || task.status === status) return;
+  boardMoving = true;
+  renderBoard();
+  try {
+    await api(`/api/meetings/${meeting}/tasks/${id}`, json("PATCH", {status, expected_status: task.status}));
+    toast(`Поручение: ${taskColumns[status]}`);
+  } catch (e) { toast(e.message, true); }
+  finally { boardMoving = false; await refreshBoard().catch(e => toast(e.message, true)); }
+}
+$("#task-search").addEventListener("input", renderBoard);
+$("#refresh-board").onclick = () => refreshBoard().catch(e => toast(e.message, true));
+$("#all-tasks").addEventListener("change", e => {
+  if (!e.target.matches("[data-board-status]")) return;
+  const card = e.target.closest("[data-board-task]");
+  moveBoardTask(card.dataset.boardMeeting, card.dataset.boardTask, e.target.value);
+});
+$("#all-tasks").addEventListener("dragstart", e => {
+  const card = e.target.closest('[data-board-task][draggable="true"]');
+  if (!card) return;
+  draggedTask = {id: card.dataset.boardTask, meeting: card.dataset.boardMeeting};
+  e.dataTransfer.setData("text/plain", card.dataset.boardTask);
+  e.dataTransfer.effectAllowed = "move";
+});
+$("#all-tasks").addEventListener("dragover", e => {
+  if (draggedTask && e.target.closest("[data-column]")) e.preventDefault();
+});
+$("#all-tasks").addEventListener("drop", e => {
+  const column = e.target.closest("[data-column]");
+  if (!column || !draggedTask) return;
+  e.preventDefault();
+  const task = draggedTask;
+  draggedTask = null;
+  moveBoardTask(task.meeting, task.id, column.dataset.column);
+});
+$("#all-tasks").addEventListener("dragend", () => { draggedTask = null; });
 function openUpload() {
   state.recorded = null;
   $("#upload-form").reset();
@@ -568,6 +613,8 @@ setInterval(async () => {
         state.current = m;
         renderDetail();
       }
+    } else if (state.view === "tasks" && !boardMoving && !draggedTask && !document.activeElement?.closest("#all-tasks")) {
+      await refreshBoard(true);
     } else if (state.view === "list" && !$("#upload-dialog").open) {
       await refreshList();
     }

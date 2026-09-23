@@ -24,7 +24,7 @@ from .config import (
     OLLAMA_URL,
     OLLAMA_MODEL,
 )
-from .schemas import ProcessRequest, TranscriptEdit, Protocol
+from .schemas import ProcessRequest, TranscriptEdit, Protocol, TaskMove
 from .export import docx_bytes, pdf_bytes
 
 jobs = queue.Queue()
@@ -389,6 +389,39 @@ def audio(ident: str):
     if not path.exists():
         raise HTTPException(404, "Аудиозапись отсутствует")
     return FileResponse(path, media_type="audio/wav")
+
+
+@app.get("/api/tasks")
+def task_board():
+    return [
+        {**task, "meeting_id": m["id"], "meeting_title": m["title"],
+         "approved": bool(m["protocol"].get("approved")),
+         "busy": m["status"] in ("queued", "processing")}
+        for m in store.all_meetings()
+        for task in (m.get("protocol") or {}).get("tasks", [])
+    ]
+
+
+@app.patch("/api/meetings/{ident}/tasks/{task_id}")
+def move_task(ident: str, task_id: str, body: TaskMove):
+    with mutation_lock:
+        m = meeting(ident)
+        editable(m)
+        protocol = m.get("protocol") or {}
+        task = next((t for t in protocol.get("tasks", []) if t.get("id") == task_id), None)
+        if task is None:
+            raise HTTPException(404, "Поручение удалено или протокол сформирован заново. Обновите доску.")
+        if not protocol.get("approved") or task.get("needs_review", True):
+            raise HTTPException(409, "Сначала проверьте поручение и подтвердите протокол встречи")
+        if task.get("status", "open") != body.expected_status:
+            raise HTTPException(409, "Статус уже изменился. Доска будет обновлена.")
+        task["status"] = body.status
+        store.save(m)
+        if body.status == "done":
+            with store.connect() as con:
+                con.execute("UPDATE tg_actions SET due=NULL WHERE meeting=? AND signature=?",
+                            (ident, telegram_bot.task_signature(task)))
+        return task
 
 
 @app.get("/api/meetings/{ident}/export/{fmt}")

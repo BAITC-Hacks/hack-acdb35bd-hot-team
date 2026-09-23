@@ -1045,3 +1045,20 @@ button.meeting-card {
     display: none;
   }
 }
+
+.board-toolbar { display: flex; gap: 12px; align-items: center; margin: 24px 0 12px; }
+.board-toolbar input { flex: 1; min-width: 0; }
+.kanban-board { display: grid; grid-template-columns: repeat(3, minmax(250px, 1fr)); gap: 18px; overflow-x: auto; padding: 4px 2px 20px; align-items: start; }
+.kanban-column { background: #edf1f3; border: 1px solid var(--line); border-radius: var(--radius); min-height: 280px; padding: 14px; }
+.kanban-column[data-column="in_progress"] { background: #eef2fa; }
+.kanban-column[data-column="done"] { background: var(--green-light); }
+.kanban-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.kanban-heading h2 { font-size: 15px; margin: 0; }
+.kanban-cards { display: grid; gap: 12px; }
+.kanban-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 2px 5px #202b3a05; overflow-wrap: anywhere; }
+.kanban-card[draggable="true"] { cursor: grab; }
+.kanban-card h3 { margin: 0 0 12px; font-size: 15px; line-height: 1.5; }
+.kanban-source { text-align: left; padding-left: 0; margin: 8px 0; }
+.kanban-status { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
+.kanban-status select { width: 100%; color: var(--ink); }
+.kanban-empty { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }

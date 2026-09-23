@@ -30,7 +30,7 @@ def contents(m):
         yield "text", f"{i}. {t['title']}"
         yield (
             "text",
-            f"Ответственный: {t.get('owner') or 'Не указан'}; срок: {t.get('due_date') or t.get('deadline_text') or 'Не указан'}; статус: {'Выполнено' if t.get('status') == 'done' else 'В работе'}",
+            f"Ответственный: {t.get('owner') or 'Не указан'}; срок: {t.get('due_date') or t.get('deadline_text') or 'Не указан'}; статус: {dict(open='К выполнению', in_progress='В работе', done='Выполнено').get(t.get('status'), 'К выполнению')}",
         )
         if t.get("evidence"):
             yield "text", "Основание: «" + t["evidence"] + "»"

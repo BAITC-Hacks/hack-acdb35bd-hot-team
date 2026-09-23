@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import uuid4
 from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
@@ -34,13 +35,14 @@ class TranscriptEdit(BaseModel):
 
 
 class Task(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex, pattern=r"^[a-f0-9]{32}$")
     title: str = Field(min_length=1, max_length=1000)
     owner: str | None = Field(default=None, max_length=200)
     deadline_text: str | None = Field(default=None, max_length=300)
     due_date: date | None = None
     source_ids: list[int] = Field(default_factory=list, max_length=30)
     evidence: str = Field(default="", max_length=2000)
-    status: Literal["open", "done"] = "open"
+    status: Literal["open", "in_progress", "done"] = "open"
     needs_review: bool = True
 
 
@@ -49,6 +51,17 @@ class Protocol(BaseModel):
     decisions: list[str] = Field(default_factory=list, max_length=100)
     tasks: list[Task] = Field(default_factory=list, max_length=100)
     approved: bool = False
+
+    @model_validator(mode="after")
+    def unique_task_ids(self):
+        if len({t.id for t in self.tasks}) != len(self.tasks):
+            raise ValueError("Идентификаторы поручений должны быть уникальны")
+        return self
+
+
+class TaskMove(BaseModel):
+    status: Literal["open", "in_progress", "done"]
+    expected_status: Literal["open", "in_progress", "done"]
 
 
 class ProcessRequest(BaseModel):
