@@ -41,7 +41,7 @@ const time = (s) =>
     .padStart(2, "0")}`;
 const busy = (m) => ["queued", "processing"].includes(m.status);
 const badge = (m) =>
-  `<span class="badge ${busy(m) ? "processing" : m.status === "error" ? "error" : m.status === "uploaded" ? "warn" : ""}">${esc(statuses[m.status] || m.status)}</span>`;
+  `<span class="badge ${busy(m) ? "processing" : m.status === "error" ? "error" : m.status === "uploaded" ? "warn" : ""}">${esc(statuses[m.status] || m.status)}${busy(m) && m.progress ? ` · ${m.progress.estimated ? "≈" : ""}${Number(m.progress.percent) || 0}%` : ""}</span>`;
 function toast(message, error = false) {
   const t = $("#toast");
   t.textContent = message;
@@ -139,20 +139,20 @@ function renderDetail() {
     hasText = m.segments.length > 0;
   $("#detail-view").innerHTML =
     `<button class="back-btn" data-action="back">← Все совещания</button>
- <div class="page-heading detail-heading"><div><div class="eyebrow">ПРОТОКОЛ СОВЕЩАНИЯ</div><h1>${esc(m.title)}</h1><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${esc(m.participants.join(", ") || "Участники не указаны")}</div></div><div class="actions">${badge(m)}<button class="secondary" data-action="delete" ${isBusy ? "disabled" : ""}>Удалить</button></div></div>
+ <div class="page-heading detail-heading"><div><div class="eyebrow">ПРОТОКОЛ СОВЕЩАНИЯ</div><h1>${esc(m.title)}</h1><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${esc(m.participants.join(", ") || "Участники не указаны")}</div></div><div class="actions"><span id="current-status">${badge(m)}</span><button class="secondary" data-action="delete" ${isBusy ? "disabled" : ""}>Удалить</button></div></div>
  ${m.error ? `<div class="notice error" role="alert">${esc(m.error)}</div>` : ""}
  <div class="panel"><div class="panel-title"><h3>Обработка записи</h3><span class="meta">Последовательно · на вашем Mac</span></div><div class="pipeline">
  <select id="language" aria-label="Язык распознавания" ${isBusy ? "disabled" : ""}><option value="kk" ${m.language === "kk" || !m.language ? "selected" : ""}>Казахский + RU</option><option value="ru" ${m.language === "ru" ? "selected" : ""}>Русский + ҚАЗ</option><option value="ru_kk" ${m.language === "ru_kk" ? "selected" : ""}>Сравнить ҚАЗ / RU · два прохода</option><option value="auto" ${m.language === "auto" ? "selected" : ""}>Автоопределение</option></select>
  <button class="primary" data-stage="transcribe" ${isBusy ? "disabled" : ""}>1. Распознать</button><span class="meta">→</span><button class="secondary" data-stage="diarize" ${isBusy || !hasText ? "disabled" : ""}>2. Разделить голоса</button><span class="meta">→</span><button class="secondary" data-stage="analyze" ${isBusy || !hasText ? "disabled" : ""}>3. Создать протокол</button></div>
  ${
    isBusy
-     ? `<div class="loading-line pulse">◌ ${m.status === "queued" ? "Ожидаем свободную память" : esc(stages[m.stage])}… Можно открыть другую встречу.</div>`
+     ? ""
      : `<p class="small-note">Язык задаёт настройку модели, а не гарантированную поддержку смешанной речи. ${Object.entries(
          m.timings || {},
        )
          .map(([k, v]) => `${esc(stages[k])}: ${v} с`)
          .join(" · ")}</p>`
- }</div>
+ }<div id="stage-progress">${progressHTML(m)}</div></div>
  <div class="detail-grid"><div class="panel"><div class="panel-title"><h3>Транскрипт <span class="meta">${m.segments.length} реплик</span></h3><button class="secondary" data-action="save-transcript" ${!hasText || isBusy ? "disabled" : ""}>Сохранить текст</button></div>
  <audio controls class="audio-player" id="player" src="/api/meetings/${m.id}/audio" preload="metadata"></audio>
  <p class="small-note">Исполнители определяются по обращениям в разговоре. Подписывать каждый голос для получения поручений не обязательно.</p><details><summary>Имена голосов · необязательно</summary><div class="speakers">${Object.entries(m.speakers)
@@ -612,6 +612,12 @@ setInterval(async () => {
       ) {
         state.current = m;
         renderDetail();
+      } else {
+        state.current = m;
+        const panel = $("#stage-progress");
+        if (panel) panel.innerHTML = progressHTML(m);
+        const status = $("#current-status");
+        if (status) status.innerHTML = badge(m);
       }
     } else if (state.view === "tasks" && !boardMoving && !draggedTask && !document.activeElement?.closest("#all-tasks")) {
       await refreshBoard(true);
@@ -643,4 +649,19 @@ function taskContextHTML(task, meeting) {
     const segment = meeting.segments.find(s => s.id === q.source_id);
     return `<p class="small-note">${segment ? `<button class="time-btn" data-seek="${segment.start}">▶ ${time(segment.start)}</button>` : ""} ${esc(q.text)}</p>`;
   }).join("")}</details>`;
+}
+
+function progressHTML(m) {
+  const p = m.progress;
+  if (!p) return "";
+  const percent = Math.max(0, Math.min(100, Number(p.percent) || 0));
+  const stopped = m.status === "error";
+  const seconds = p.started_at ? Math.max(0, Math.floor((Date.now() - Date.parse(p.started_at)) / 1000)) : 0;
+  const label = stopped ? "Обработка остановлена" : p.label;
+  return `<section class="stage-progress ${stopped ? "stopped" : ""}" aria-label="Прогресс обработки">
+    <div class="progress-heading"><strong>${esc(stages[p.stage] || "Обработка")}</strong><strong>${p.estimated ? "≈ " : ""}${percent}%</strong></div>
+    <progress max="100" value="${percent}" aria-label="${esc(stages[p.stage] || "Обработка")}" aria-valuetext="${p.estimated ? "Поэтапная оценка: " : ""}${percent}%"></progress>
+    <div class="progress-caption" role="status" aria-live="polite">${esc(label || "Подготовка")}${busy(m) && p.started_at ? ` · ${time(seconds)}` : ""}</div>
+    ${busy(m) ? `<p class="small-note">${m.status === "queued" ? "Ожидаем завершения другой обработки." : p.estimated ? "Поэтапная оценка, не прогноз времени. Процент может оставаться на одном значении, пока модель выполняет шаг." : "Прогресс по обработанному аудио. Загрузка модели и длинные фрагменты могут занимать время."} Можно открыть другую встречу.</p>` : ""}
+  </section>`;
 }

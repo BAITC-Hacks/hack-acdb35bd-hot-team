@@ -316,6 +316,7 @@ def process(ident: str, body: ProcessRequest):
             )
         m.update(
             status="queued",
+            progress={"stage": body.stage, "percent": 0, "label": "В очереди", "estimated": False},
             stage=body.stage,
             error=None,
             language=body.language,

@@ -1062,3 +1062,13 @@ button.meeting-card {
 .kanban-status { display: grid; gap: 5px; font-size: 12px; color: var(--muted); }
 .kanban-status select { width: 100%; color: var(--ink); }
 .kanban-empty { color: var(--muted); padding: 20px 0; text-align: center; font-size: 13px; }
+
+.stage-progress { margin-top: 18px; padding: 16px; border: 1px solid var(--border, #dedee6); border-radius: 12px; }
+.progress-heading { display:flex; justify-content:space-between; gap:16px; margin-bottom:10px; }
+.stage-progress progress { display:block; width:100%; height:12px; accent-color:#6554c0; border:0; border-radius:8px; overflow:hidden; }
+.stage-progress progress::-webkit-progress-bar { background:#e9e7f2; border-radius:8px; }
+.stage-progress progress::-webkit-progress-value { background:#6554c0; border-radius:8px; transition:width .3s ease; }
+.stage-progress.stopped progress { accent-color:#ad3a3a; }
+.stage-progress.stopped progress::-webkit-progress-value { background:#ad3a3a; }
+.progress-caption { margin-top:10px; font-size:14px; }
+@media (prefers-reduced-motion: reduce) { .stage-progress progress::-webkit-progress-value { transition:none; } }

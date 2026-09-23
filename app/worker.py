@@ -21,6 +21,15 @@ from .config import (
     OLLAMA_MODEL,
 )
 from .analysis import parse_result, ground_protocol, make_prompt, named_speakers
+from .progress import Progress
+
+_progress = None
+
+def report(percent, label, estimated=False, force=False):
+    if _progress:
+        _progress.update(percent, label, estimated, force)
+
+
 from .speech import normalize_words, align_speakers, attach_alternatives, repetitive_text
 
 # Defense in depth: inference processes may only connect to loopback services.
@@ -69,20 +78,33 @@ def cached(repo):
     return snapshot_download(repo, local_files_only=True)
 
 
-def recognize(path, language):
+def recognize(path, language, on_progress=lambda fraction: None):
     if ASR_BACKEND == "mlx":
         import mlx_whisper
 
-        result = mlx_whisper.transcribe(
-            path,
-            path_or_hf_repo=cached(ASR_MODEL),
-            language=language,
-            task="transcribe",
-            condition_on_previous_text=False,
-            word_timestamps=True,
-            temperature=0.0,
-            verbose=False,
-        )
+        import importlib
+        from types import SimpleNamespace
+        module = importlib.import_module("mlx_whisper.transcribe")
+        original = module.tqdm
+        class AudioProgress(original.tqdm):
+            def update(self, n=1):
+                result = super().update(n)
+                on_progress(min(1, self.n / self.total) if self.total else 0)
+                return result
+        module.tqdm = SimpleNamespace(tqdm=AudioProgress)
+        try:
+            result = mlx_whisper.transcribe(
+                path,
+                path_or_hf_repo=cached(ASR_MODEL),
+                language=language,
+                task="transcribe",
+                condition_on_previous_text=False,
+                word_timestamps=True,
+                temperature=0.0,
+                verbose=False,
+            )
+        finally:
+            module.tqdm = original
         raw = result["segments"]
         detected = result.get("language")
     else:
@@ -98,6 +120,10 @@ def recognize(path, language):
             temperature=0.0,
             condition_on_previous_text=False,
         )
+        def tracked_segments():
+            for segment in segments:
+                on_progress(min(1, segment.end / info.duration) if info.duration else 0)
+                yield segment
         raw = [
             dict(
                 start=s.start,
@@ -107,7 +133,7 @@ def recognize(path, language):
                 compression_ratio=s.compression_ratio,
                 words=[dict(start=w.start, end=w.end, word=w.word) for w in (s.words or [])],
             )
-            for s in segments
+            for s in tracked_segments()
         ]
         detected = info.language
     return raw, detected
@@ -117,10 +143,13 @@ def transcribe(m):
     path = str(DATA / m["id"] / "audio.wav")
     mode = m.get("language", "kk")
     language = None if mode == "auto" else ("kk" if mode == "ru_kk" else mode)
-    raw, m["detected_language"] = recognize(path, language)
+    passes = 2 if mode == "ru_kk" else 1
+    report(0, "Загрузка модели распознавания", force=True)
+    raw, m["detected_language"] = recognize(path, language,
+        lambda f: report(98 * f / passes, f"Распознано аудио: {round(f * 100)}% · проход 1/{passes}"))
     m["asr_alternatives"] = []
     if mode == "ru_kk":
-        alternative, _ = recognize(path, "ru")
+        alternative, _ = recognize(path, "ru", lambda f: report(49 + 49 * f, f"Распознано аудио: {round(f * 100)}% · проход 2/2"))
         m["asr_alternatives"] = [
             dict(start=s["start"], end=s["end"], text=s["text"], words=s.get("words", []))
             for s in alternative
@@ -140,6 +169,7 @@ def transcribe(m):
         for i, s in enumerate(raw)
         if s["text"].strip() and s["start"] < m["duration"]
     ]
+    report(99, "Сохранение текста и таймкодов", force=True)
     m["asr_model"] = ASR_MODEL
     m["asr_backend"] = ASR_BACKEND
     attach_alternatives(m["segments"], m["asr_alternatives"])
@@ -157,11 +187,21 @@ def diarize(m):
     import soundfile as sf
     from pyannote.audio import Pipeline
 
+    report(0, "Загрузка модели разделения голосов", True, True)
     pipeline = Pipeline.from_pretrained(cached(DIAR_MODEL))
     audio, sr = sf.read(str(DATA / m["id"] / "audio.wav"), dtype="float32")
     waveform = torch.from_numpy(audio).unsqueeze(0)
     options = {"num_speakers": m["num_speakers"]} if m.get("num_speakers") else {}
-    result = pipeline({"waveform": waveform, "sample_rate": sr}, **options)
+    def hook(step_name, artifact, total=None, completed=None, **kwargs):
+        steps = {"segmentation": (5, 40, "Поиск речи"),
+                 "speaker_counting": (45, 5, "Подсчёт голосов"),
+                 "embeddings": (50, 35, "Сравнение голосов"),
+                 "discrete_diarization": (90, 5, "Сборка реплик")}
+        base, span, label = steps.get(step_name, (5, 0, "Разделение голосов"))
+        fraction = min(1, completed / total) if total and completed is not None else 1
+        report(base + span * fraction, label, True)
+    result = pipeline({"waveform": waveform, "sample_rate": sr}, hook=hook, **options)
+    report(98, "Сопоставление голосов с текстом", True, True)
     annotation = result.exclusive_speaker_diarization
     turns = [
         (turn.start, turn.end, speaker)
@@ -188,6 +228,7 @@ def diarize(m):
 
 
 def analyze(m):
+    report(0, "Загрузка модели анализа", True, True)
     if LLM_BACKEND == "ollama":
         from urllib.parse import urlparse
         import httpx
@@ -200,6 +241,7 @@ def analyze(m):
             or url.password
         ):
             raise ValueError("Only local Ollama is allowed")
+        report(20, "Создание протокола · ожидаем локальную модель", True, True)
         response = httpx.post(
             OLLAMA_URL.rstrip("/") + "/api/chat",
             json={
@@ -217,7 +259,7 @@ def analyze(m):
         response.raise_for_status()
         result = response.json()["message"]["content"]
     else:
-        from mlx_lm import load, generate
+        from mlx_lm import load, stream_generate
 
         model, tokenizer = load(cached(LLM_MODEL))
         prompt = tokenizer.apply_chat_template(
@@ -228,14 +270,18 @@ def analyze(m):
         )
         from mlx_lm.sample_utils import make_sampler
 
-        result = generate(
-            model,
-            tokenizer,
-            prompt=prompt,
-            max_tokens=3500,
+        report(10, "Чтение транскрипта", True, True)
+        parts = []
+        for i, response in enumerate(stream_generate(
+            model, tokenizer, prompt=prompt, max_tokens=3500,
             sampler=make_sampler(temp=0),
-            verbose=False,
-        )
+            prompt_progress_callback=lambda done, total: report(
+                10 + 10 * done / max(total, 1), "Чтение транскрипта", True),
+        ), 1):
+            parts.append(response.text)
+            report(20, f"Создание протокола · сгенерировано {i} токенов", True)
+        result = "".join(parts)
+    report(90, "Проверка цитат, исполнителей и сроков", True, True)
     protocol, warnings = ground_protocol(parse_result(result), m)
     recognized_names = named_speakers(m)
     m.setdefault("speakers", {}).update(recognized_names)
@@ -249,15 +295,19 @@ def analyze(m):
 
 
 def run(ident, stage):
+    global _progress
     m = store.get(ident)
     if not m:
         raise ValueError("Meeting not found")
     started = time.monotonic()
     m.update(status="processing", stage=stage, error=None)
     store.save(m)
+    _progress = Progress(m, stage)
+    report(0, "Подготовка", stage != "transcribe", True)
     try:
         {"transcribe": transcribe, "diarize": diarize, "analyze": analyze}[stage](m)
         m.setdefault("timings", {})[stage] = round(time.monotonic() - started, 1)
+        _progress.complete()
     except Exception as exc:
         # Avoid persisting URLs, access tokens or model output from library exceptions.
         m.update(
