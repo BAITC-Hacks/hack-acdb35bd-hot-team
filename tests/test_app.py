@@ -85,9 +85,7 @@ def test_grounding_discards_fabricated_details(meeting):
         }
     )
     result, warnings = ground_protocol(p, meeting)
-    t = result["tasks"][0]
-    assert t["owner"] is None and t["due_date"] is None and t["source_ids"] == []
-    assert t["evidence"] == "" and warnings
+    assert result["tasks"] == [] and warnings
 
 
 def test_grounding_keeps_exact_evidence(meeting):
@@ -209,3 +207,17 @@ def test_upload_real_wav(client):
     assert response.json()["duration"] == 1
     assert client.get(f"/api/meetings/{ident}/audio").status_code == 200
     assert client.delete(f"/api/meetings/{ident}").status_code == 204
+
+
+def test_protocol_sources_survive_confirmation_but_not_rewriting(client, meeting):
+    source = dict(text="Обсудили отчёт.", source_ids=[0], evidence="отчёт")
+    meeting['protocol'] = dict(summary=source['text'], decisions=[], tasks=[], approved=False,
+                               sources=dict(summary=[source], decisions=[]))
+    store.save(meeting)
+    payload = dict(meeting['protocol'], approved=True)
+    r = client.put('/api/meetings/test/protocol', json=payload)
+    assert r.status_code == 200
+    assert r.json()['protocol']['sources']['summary'] == [source]
+    payload['summary'] = 'Ручное исправление'
+    r = client.put('/api/meetings/test/protocol', json=payload)
+    assert r.json()['protocol']['sources']['summary'] == []

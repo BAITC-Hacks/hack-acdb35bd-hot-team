@@ -342,6 +342,8 @@ def update_transcript(ident: str, body: TranscriptEdit):
             # supplied by a client. Preserve it only while text and bounds match.
             if all(segment[k] == old.get(k) for k in ("text", "start", "end")):
                 segment["words"] = old.get("words", [])
+                if old.get("alternative_text"):
+                    segment["alternative_text"] = old["alternative_text"]
             else:
                 segment["words"] = []
             segments.append(segment)
@@ -369,7 +371,14 @@ def update_protocol(ident: str, body: Protocol):
         valid_ids = {s["id"] for s in m["segments"]}
         if any(i not in valid_ids for t in body.tasks for i in t.source_ids):
             raise HTTPException(422, "Поручение ссылается на отсутствующую реплику")
-        m.update(protocol=body.model_dump(mode="json"), status="ready")
+        protocol = body.model_dump(mode="json")
+        previous = m.get("protocol") or {}
+        sources = previous.get("sources", {})
+        protocol["sources"] = {
+            "summary": sources.get("summary", []) if body.summary == previous.get("summary") else [],
+            "decisions": [s for s in sources.get("decisions", []) if s["text"] in body.decisions],
+        }
+        m.update(protocol=protocol, status="ready")
         return store.save(m)
 
 

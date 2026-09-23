@@ -1,9 +1,41 @@
 """Model-independent word timing and speaker alignment helpers."""
 
 import math
+import re
 from collections import defaultdict
 
 UNKNOWN = "SPEAKER_UNKNOWN"
+
+
+def repetitive_text(text):
+    text = text.casefold()
+    words = re.findall(r"\w+", text)
+    grams = [tuple(words[i:i + 4]) for i in range(len(words) - 3)]
+    return (
+        any(grams.count(g) >= 3 for g in set(grams))
+        or bool(re.search(r"([^\W\d_]{3,12})\1{5,}", text))
+        or bool(re.search(r"\b(\w+)(?:\s+\1\b){4,}", text))
+    )
+
+
+def attach_alternatives(segments, alternative):
+    """Compare timed hypotheses, never use fluency as evidence of correctness."""
+    for segment in segments:
+        pieces = []
+        for row in alternative:
+            if row.get("words"):
+                for word in row["words"]:
+                    midpoint = (word["start"] + word["end"]) / 2
+                    if segment["start"] <= midpoint < segment["end"]:
+                        pieces.append(word["word"])
+            elif segment["start"] <= (row["start"] + row["end"]) / 2 < segment["end"]:
+                pieces.append(" " + row["text"])
+        candidate = "".join(pieces).strip()
+        clean = lambda value: " ".join(re.findall(r"\w+", value.casefold()))
+        segment.pop("alternative_text", None)
+        if candidate and clean(candidate) != clean(segment["text"]):
+            segment["alternative_text"] = candidate
+            segment["uncertain"] = True
 
 
 def normalize_words(raw, start, end, text):

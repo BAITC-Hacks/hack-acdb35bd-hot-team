@@ -34,3 +34,20 @@ def test_missing_word_coverage_is_flagged():
     segment = dict(id=0, start=0, end=1, text="Да", words=[dict(start=0, end=1, word="Да")])
     result = align_speakers([segment], [(0, .4, "A")])
     assert result[0]["speaker"] == "A" and result[0]["uncertain"]
+
+
+def test_alternative_uses_word_time_not_segment_index():
+    from app.speech import attach_alternatives
+    segments = [dict(start=0, end=1, text="Жақсы"), dict(start=1, end=2, text="Отчёт.")]
+    alternative = [dict(start=0, end=2, text="Хорошо отчёт", words=[
+        dict(start=0, end=1, word="Хорошо"), dict(start=1, end=2, word=" отчёт")])]
+    attach_alternatives(segments, alternative)
+    assert segments[0]['alternative_text'] == 'Хорошо' and segments[0]['uncertain']
+    assert 'alternative_text' not in segments[1]
+
+
+def test_repetition_guard_catches_word_and_syllable_loops():
+    from app.speech import repetitive_text
+    assert repetitive_text('қалайсыздар ' * 6)
+    assert repetitive_text('Әріңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіздіңіз')
+    assert not repetitive_text('Жақсы, отчётты жұма күні жіберемін.')

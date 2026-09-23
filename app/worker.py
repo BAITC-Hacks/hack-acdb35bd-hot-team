@@ -21,7 +21,7 @@ from .config import (
     OLLAMA_MODEL,
 )
 from .analysis import parse_result, ground_protocol, make_prompt
-from .speech import normalize_words, align_speakers
+from .speech import normalize_words, align_speakers, attach_alternatives, repetitive_text
 
 # Defense in depth: inference processes may only connect to loopback services.
 # Model downloads happen in scripts/download_models.py, never in this process.
@@ -69,9 +69,7 @@ def cached(repo):
     return snapshot_download(repo, local_files_only=True)
 
 
-def transcribe(m):
-    path = str(DATA / m["id"] / "audio.wav")
-    language = None if m.get("language") == "auto" else m.get("language", "kk")
+def recognize(path, language):
     if ASR_BACKEND == "mlx":
         import mlx_whisper
 
@@ -82,11 +80,11 @@ def transcribe(m):
             task="transcribe",
             condition_on_previous_text=False,
             word_timestamps=True,
-            hallucination_silence_threshold=2.0,
+            temperature=0.0,
             verbose=False,
         )
         raw = result["segments"]
-        m["detected_language"] = result.get("language")
+        detected = result.get("language")
     else:
         from faster_whisper import WhisperModel
 
@@ -97,6 +95,7 @@ def transcribe(m):
             task="transcribe",
             vad_filter=True,
             word_timestamps=True,
+            temperature=0.0,
             condition_on_previous_text=False,
         )
         raw = [
@@ -110,7 +109,22 @@ def transcribe(m):
             )
             for s in segments
         ]
-        m["detected_language"] = info.language
+        detected = info.language
+    return raw, detected
+
+
+def transcribe(m):
+    path = str(DATA / m["id"] / "audio.wav")
+    mode = m.get("language", "kk")
+    language = None if mode == "auto" else ("kk" if mode == "ru_kk" else mode)
+    raw, m["detected_language"] = recognize(path, language)
+    m["asr_alternatives"] = []
+    if mode == "ru_kk":
+        alternative, _ = recognize(path, "ru")
+        m["asr_alternatives"] = [
+            dict(start=s["start"], end=s["end"], text=s["text"], words=s.get("words", []))
+            for s in alternative
+        ]
     m["segments"] = [
         dict(
             id=i,
@@ -121,11 +135,12 @@ def transcribe(m):
                                   round(min(s["end"], m["duration"]), 2), s["text"]),
             speaker="SPEAKER_UNKNOWN",
             uncertain=s.get("avg_logprob", 0) < -1
-            or s.get("compression_ratio", 0) > 2.4,
+            or s.get("compression_ratio", 0) > 2.4 or repetitive_text(s["text"]),
         )
         for i, s in enumerate(raw)
         if s["text"].strip() and s["start"] < m["duration"]
     ]
+    attach_alternatives(m["segments"], m["asr_alternatives"])
     m["speakers"] = {"SPEAKER_UNKNOWN": "Участник не определён"}
     m["diarized"] = False
     m["protocol"] = None
@@ -151,6 +166,7 @@ def diarize(m):
         for turn, _, speaker in annotation.itertracks(yield_label=True)
     ]
     m["segments"] = align_speakers(m["segments"], turns)
+    attach_alternatives(m["segments"], m.get("asr_alternatives", []))
     labels = sorted(set(s["speaker"] for s in m["segments"]))
     m["speakers"] = {
         label: m.get("speakers", {}).get(

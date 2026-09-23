@@ -142,7 +142,7 @@ function renderDetail() {
  <div class="page-heading detail-heading"><div><div class="eyebrow">ПРОТОКОЛ СОВЕЩАНИЯ</div><h1>${esc(m.title)}</h1><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${esc(m.participants.join(", ") || "Участники не указаны")}</div></div><div class="actions">${badge(m)}<button class="secondary" data-action="delete" ${isBusy ? "disabled" : ""}>Удалить</button></div></div>
  ${m.error ? `<div class="notice error" role="alert">${esc(m.error)}</div>` : ""}
  <div class="panel"><div class="panel-title"><h3>Обработка записи</h3><span class="meta">Последовательно · на вашем Mac</span></div><div class="pipeline">
- <select id="language" aria-label="Язык распознавания" ${isBusy ? "disabled" : ""}><option value="kk" ${m.language === "kk" || !m.language ? "selected" : ""}>Казахский + RU</option><option value="ru" ${m.language === "ru" ? "selected" : ""}>Русский + ҚАЗ</option><option value="auto" ${m.language === "auto" ? "selected" : ""}>Автоопределение</option></select>
+ <select id="language" aria-label="Язык распознавания" ${isBusy ? "disabled" : ""}><option value="kk" ${m.language === "kk" || !m.language ? "selected" : ""}>Казахский + RU</option><option value="ru" ${m.language === "ru" ? "selected" : ""}>Русский + ҚАЗ</option><option value="ru_kk" ${m.language === "ru_kk" ? "selected" : ""}>Сравнить ҚАЗ / RU · два прохода</option><option value="auto" ${m.language === "auto" ? "selected" : ""}>Автоопределение</option></select>
  <button class="primary" data-stage="transcribe" ${isBusy ? "disabled" : ""}>1. Распознать</button><span class="meta">→</span><button class="secondary" data-stage="diarize" ${isBusy || !hasText ? "disabled" : ""}>2. Разделить голоса</button><span class="meta">→</span><button class="secondary" data-stage="analyze" ${isBusy || !hasText ? "disabled" : ""}>3. Создать протокол</button></div>
  ${
    isBusy
@@ -175,14 +175,14 @@ function renderDetail() {
            )
            .join(
              "",
-           )}</select>${s.uncertain ? '<span class="uncertain">Проверьте фрагмент</span>' : ""}</div><textarea data-segment-text aria-label="Текст реплики" ${isBusy ? "disabled" : ""}>${esc(s.text)}</textarea></div>`,
+           )}</select>${s.uncertain ? '<span class="uncertain">Проверьте фрагмент</span>' : ""}</div><textarea data-segment-text aria-label="Текст реплики" ${isBusy ? "disabled" : ""}>${esc(s.text)}</textarea>${s.alternative_text ? `<details><summary>Другой вариант · RU · ${time(s.start)}–${time(s.end)}</summary><p class="small-note">${esc(s.alternative_text)}</p><p class="small-note">Сверьте с аудио и при необходимости исправьте текст выше. Вариант не является исправлением.</p></details>` : ""}</div>`,
      )
      .join("") ||
    '<div class="placeholder">Здесь появятся реплики и временные метки.<br>Нажмите «Распознать», чтобы начать.</div>'
  }</div></div>
  <div><div class="panel"><div class="panel-title"><h3>Итоги встречи</h3><span class="badge ${p?.approved ? "" : "warn"}">${p?.approved ? "Подтверждено" : "Черновик"}</span></div>
  ${(p?.approved ? [] : m.warnings).map((w) => `<p class="small-note">${esc(w)}</p>`).join("")}
- ${p ? `<label>Краткое содержание<textarea id="summary" class="summary-area" ${isBusy ? "disabled" : ""}>${esc(p.summary)}</textarea></label><label>Решения <span class="meta">по одному на строку</span><textarea id="decisions" ${isBusy ? "disabled" : ""}>${esc(p.decisions.join("\n"))}</textarea></label><div class="panel-title subheading"><span>Поручения · ${p.tasks.length}</span><button class="text-btn" data-action="add-task" ${isBusy ? "disabled" : ""}>＋ Добавить вручную</button></div><div id="task-list">${p.tasks.map((t, i) => taskHTML(t, i, m)).join("") || '<p class="small-note">Поручения не обнаружены. Если они есть в записи, добавьте их вручную.</p>'}</div><div class="protocol-actions"><button class="secondary" data-action="save-protocol" ${isBusy ? "disabled" : ""}>Сохранить черновик</button><button class="primary" data-action="approve" ${isBusy ? "disabled" : ""}>Подтвердить протокол</button></div>` : `<div class="placeholder">После проверки текста нажмите<br>«Создать протокол».<br>ИИ выделит решения и поручения.</div>`}
+ ${p ? `<label>Краткое содержание<textarea id="summary" class="summary-area" ${isBusy ? "disabled" : ""}>${esc(p.summary)}</textarea></label>${sourcesHTML(p, m)}<label>Решения <span class="meta">по одному на строку</span><textarea id="decisions" ${isBusy ? "disabled" : ""}>${esc(p.decisions.join("\n"))}</textarea></label><div class="panel-title subheading"><span>Поручения · ${p.tasks.length}</span><button class="text-btn" data-action="add-task" ${isBusy ? "disabled" : ""}>＋ Добавить вручную</button></div><div id="task-list">${p.tasks.map((t, i) => taskHTML(t, i, m)).join("") || '<p class="small-note">Поручения не обнаружены. Если они есть в записи, добавьте их вручную.</p>'}</div><div class="protocol-actions"><button class="secondary" data-action="save-protocol" ${isBusy ? "disabled" : ""}>Сохранить черновик</button><button class="primary" data-action="approve" ${isBusy ? "disabled" : ""}>Подтвердить протокол</button></div>` : `<div class="placeholder">После проверки текста нажмите<br>«Создать протокол».<br>ИИ выделит решения и поручения.</div>`}
  </div><div class="panel"><div class="panel-title"><h3>Экспорт протокола</h3><span class="meta">Сохранённая версия</span></div><p class="small-note">${p?.approved ? "Подтверждённый протокол готов к передаче." : "Неподтверждённый документ будет помечен как черновик."}</p><button class="secondary" data-action="telegram">Telegram · уведомления</button><div class="actions"><button class="secondary" data-export="docx" ${!hasText || isBusy ? "disabled" : ""}>↓ DOCX</button><button class="secondary" data-export="pdf" ${!hasText || isBusy ? "disabled" : ""}>↓ PDF</button><button class="secondary" data-export="json" ${!hasText || isBusy ? "disabled" : ""}>↓ JSON</button></div></div></div></div>`;
   if (isBusy)
     $$(
@@ -578,3 +578,14 @@ refreshList().catch((e) => toast(e.message, true));
 $("#mobile-meetings").onclick = () => $("#nav-meetings").click();
 $("#mobile-tasks").onclick = () => $("#nav-tasks").click();
 $("#mobile-system").onclick = () => $("#show-system").click();
+
+function sourcesHTML(protocol, meeting) {
+  const groups = protocol.sources;
+  if (!groups) return "";
+  const rows = [...(groups.summary || []), ...(groups.decisions || [])];
+  if (!rows.length) return "";
+  return `<details><summary>Основания саммари и решений · ${rows.length}</summary>${rows.map((fact) => {
+    const segment = meeting.segments.find((s) => fact.source_ids.includes(s.id));
+    return `<p class="small-note"><strong>${esc(fact.text)}</strong><br>${segment ? `<button class="time-btn" data-seek="${segment.start}">▶ ${time(segment.start)}</button>` : ""} ${esc(fact.evidence)}</p>`;
+  }).join("")}</details>`;
+}
