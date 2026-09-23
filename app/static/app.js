@@ -189,7 +189,7 @@ function renderDetail() {
          .join(" · ")}</p>`
  }<div id="stage-progress">${progressHTML(m)}</div></div>
  <div class="detail-grid"><div class="panel"><div class="panel-title"><h3>Транскрипт <span class="meta">${m.segments.length} реплик</span></h3><button class="secondary" data-action="save-transcript" ${!hasText || isBusy ? "disabled" : ""}>Сохранить текст</button></div>
- <audio controls class="audio-player" id="player" src="/api/meetings/${m.id}/audio" preload="metadata"></audio>
+ <button class="secondary" data-action="voices" ${isBusy ? "disabled" : ""}>Голосовые профили · узнать участников</button><audio controls class="audio-player" id="player" src="/api/meetings/${m.id}/audio" preload="metadata"></audio>
  <p class="small-note">Исполнители определяются по обращениям в разговоре. Подписывать каждый голос для получения поручений не обязательно.</p><details><summary>Имена голосов · необязательно</summary><div class="speakers">${Object.entries(m.speakers)
    .map(
      ([id, name]) =>
@@ -217,16 +217,21 @@ function renderDetail() {
  }</div></div>
  <div><div class="panel"><div class="panel-title"><h3>Итоги встречи</h3><span class="badge ${p?.approved ? "" : "warn"}">${p?.approved ? "Подтверждено" : "Черновик"}</span></div>
  ${(p?.approved ? [] : m.warnings).map((w) => `<p class="small-note">${esc(w)}</p>`).join("")}
- ${p ? `<label>Краткое содержание<textarea id="summary" class="summary-area" ${isBusy ? "disabled" : ""}>${esc(p.summary)}</textarea></label>${sourcesHTML(p, m)}<label>Решения <span class="meta">по одному на строку</span><textarea id="decisions" ${isBusy ? "disabled" : ""}>${esc(p.decisions.join("\n"))}</textarea></label><div class="panel-title subheading"><span>Поручения · ${p.tasks.length}</span><button class="text-btn" data-action="add-task" ${isBusy ? "disabled" : ""}>＋ Добавить вручную</button></div><div id="task-list">${p.tasks.map((t, i) => taskHTML(t, i, m)).join("") || '<p class="small-note">Поручения не обнаружены. Если они есть в записи, добавьте их вручную.</p>'}</div><div class="protocol-actions"><button class="secondary" data-action="save-protocol" ${isBusy ? "disabled" : ""}>Сохранить черновик</button><button class="primary" data-action="approve" ${isBusy ? "disabled" : ""}>Подтвердить протокол</button></div>` : `<div class="placeholder">После проверки текста нажмите<br>«Создать протокол».<br>ИИ выделит решения и поручения.</div>`}
+ ${p ? `<label>Краткое содержание<textarea id="summary" class="summary-area" ${isBusy ? "disabled" : ""}>${esc(p.summary)}</textarea></label>${sourcesHTML(p, m)}<label>Решения <span class="meta">по одному на строку</span><textarea id="decisions" ${isBusy ? "disabled" : ""}>${esc(p.decisions.join("\n"))}</textarea></label><div class="panel-title subheading"><span>Поручения · ${p.tasks.length}</span><button class="text-btn" data-action="add-task" ${isBusy ? "disabled" : ""}>＋ Добавить вручную</button></div><div id="task-list">${p.tasks.map((t, i) => taskHTML(t, i, m)).join("") || '<p class="small-note">Поручения не обнаружены. Если они есть в записи, добавьте их вручную.</p>'}</div><div class="protocol-actions"><button class="secondary" data-action="classify" ${isBusy ? "disabled" : ""}>Определить срочность и направление</button><button class="secondary" data-action="save-protocol" ${isBusy ? "disabled" : ""}>Сохранить черновик</button><button class="primary" data-action="approve" ${isBusy ? "disabled" : ""}>Подтвердить протокол</button></div>` : `<div class="placeholder">После проверки текста нажмите<br>«Создать протокол».<br>ИИ выделит решения и поручения.</div>`}
  </div><div class="panel"><div class="panel-title"><h3>Экспорт протокола</h3><span class="meta">Сохранённая версия</span></div><p class="small-note">${p?.approved ? "Подтверждённый протокол готов к передаче." : "Неподтверждённый документ будет помечен как черновик."}</p><button class="secondary" data-action="telegram">Telegram · уведомления</button><div class="actions"><button class="secondary" data-export="docx" ${!hasText || isBusy ? "disabled" : ""}>↓ DOCX</button><button class="secondary" data-export="pdf" ${!hasText || isBusy ? "disabled" : ""}>↓ PDF</button><button class="secondary" data-export="json" ${!hasText || isBusy ? "disabled" : ""}>↓ JSON</button></div></div></div></div>`;
   if (isBusy)
     $$(
       "#detail-view input, #detail-view textarea, #detail-view select",
     ).forEach((el) => (el.disabled = true));
 }
+const priorities = {unspecified: "Не определена", normal: "Обычная", high: "Высокая"};
+const directions = {other: "Не определено", finance: "Финансы", procurement: "Закупки", legal: "Юридические вопросы", safety: "Безопасность", operations: "Производство", it: "ИТ", hr: "Персонал"};
+function classificationFields(t) {
+  return `<div class="task-fields">${[["priority", "Срочность", priorities, "unspecified"], ["direction", "Направление", directions, "other"]].map(([field,label,values,fallback]) => `<label>${label}<select data-field="${field}">${Object.entries(values).map(([key,name]) => `<option value="${key}" ${(t[field] || fallback) === key ? "selected" : ""}>${name}</option>`).join("")}</select></label>`).join("")}</div><p class="small-note">${esc(t.classification_reason || "Категории можно назначить вручную или определить по тексту.")}</p>`;
+}
 function taskHTML(t, i, m) {
   const source = m.segments.find((s) => t.source_ids.includes(s.id));
-  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}${taskContextHTML(t, m)}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>К выполнению</option><option value="in_progress" ${t.status === "in_progress" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
+  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}${taskContextHTML(t, m)}${classificationFields(t)}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>К выполнению</option><option value="in_progress" ${t.status === "in_progress" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
 }
 function readProtocol() {
   const original = state.current.protocol;
@@ -246,8 +251,12 @@ function readProtocol() {
         "deadline_text",
         "due_date",
         "status",
+      "priority",
+      "direction",
       ])
         task[field] = $(`[data-field="${field}"]`, el).value.trim() || null;
+      if (task.priority !== original.tasks[Number(el.dataset.task)].priority || task.direction !== original.tasks[Number(el.dataset.task)].direction)
+        task.classification_reason = "Категории уточнены пользователем.";
       task.needs_review = !$('[data-field="reviewed"]', el).checked;
       return task;
     }),
@@ -310,7 +319,8 @@ async function refreshBoard(quiet = false) {
 }
 function renderBoard() {
   const query = $("#task-search").value.trim().toLocaleLowerCase();
-  const tasks = boardTasks.filter(t => [t.title, t.owner, t.meeting_title].some(v => (v || "").toLocaleLowerCase().includes(query)));
+  const priority = $("#priority-filter").value, direction = $("#direction-filter").value;
+  const tasks = boardTasks.filter(t => (!priority || (t.priority || "unspecified") === priority) && (!direction || (t.direction || "other") === direction) && [t.title, t.owner, t.meeting_title].some(v => (v || "").toLocaleLowerCase().includes(query)));
   const today = new Date().toLocaleDateString("en-CA");
   $("#board-count").textContent = `${tasks.length} поручений · ${tasks.filter(t => !t.approved || t.needs_review).length} требуют подтверждения`;
   $("#all-tasks").innerHTML = `<div class="kanban-board">${Object.entries(taskColumns).map(([status,label]) => {
@@ -318,7 +328,7 @@ function renderBoard() {
     return `<section class="kanban-column" data-column="${status}" aria-label="${label}"><div class="kanban-heading"><h2>${label}</h2><span class="badge">${rows.length}</span></div><div class="kanban-cards">${rows.map(t => {
       const locked = !t.approved || t.needs_review || t.busy || boardMoving;
       const overdue = t.due_date && t.due_date < today && t.status !== "done";
-      return `<article class="kanban-card" draggable="${!locked}" data-board-task="${t.id}" data-board-meeting="${t.meeting_id}"><div class="kanban-card-heading"><h3>${esc(t.title)}</h3><span class="kanban-grip" aria-hidden="true" title="${locked ? "Перемещение недоступно" : "Зажмите карточку и перенесите в другую колонку"}">⠿</span></div><p class="meta">${esc(t.owner || "Исполнитель не указан")}</p><p class="${overdue ? "overdue" : "meta"}">${overdue ? "Просрочено · " : "Срок · "}${esc(t.due_date || t.deadline_text || "не указан")}</p>${!t.approved || t.needs_review ? '<p class="small-note">Перемещение недоступно: проверьте поручения и подтвердите протокол встречи</p>' : ""}${t.busy ? '<p class="small-note">Встреча обрабатывается</p>' : ""}<button class="text-btn kanban-source" data-meeting="${t.meeting_id}">${esc(t.meeting_title)} ↗</button><label class="kanban-status">Статус<select data-board-status aria-label="Статус: ${esc(t.title)}" ${locked ? "disabled" : ""}>${Object.entries(taskColumns).map(([value,text]) => `<option value="${value}" ${value === t.status ? "selected" : ""}>${text}</option>`).join("")}</select></label></article>`;
+      return `<article class="kanban-card" draggable="${!locked}" data-board-task="${t.id}" data-board-meeting="${t.meeting_id}"><div class="kanban-card-heading"><h3>${esc(t.title)}</h3><span class="kanban-grip" aria-hidden="true" title="${locked ? "Перемещение недоступно" : "Зажмите карточку и перенесите в другую колонку"}">⠿</span></div><p class="task-tags"><span class="badge ${t.priority === "high" ? "priority-high" : ""}">${esc(priorities[t.priority] || "Срочность не определена")}</span> <span class="badge">${esc(directions[t.direction] || "Направление не определено")}</span></p><p class="meta">${esc(t.owner || "Исполнитель не указан")}</p><p class="${overdue ? "overdue" : "meta"}">${overdue ? "Просрочено · " : "Срок · "}${esc(t.due_date || t.deadline_text || "не указан")}</p>${!t.approved || t.needs_review ? '<p class="small-note">Перемещение недоступно: проверьте поручения и подтвердите протокол встречи</p>' : ""}${t.busy ? '<p class="small-note">Встреча обрабатывается</p>' : ""}<button class="text-btn kanban-source" data-meeting="${t.meeting_id}">${esc(t.meeting_title)} ↗</button><label class="kanban-status">Статус<select data-board-status aria-label="Статус: ${esc(t.title)}" ${locked ? "disabled" : ""}>${Object.entries(taskColumns).map(([value,text]) => `<option value="${value}" ${value === t.status ? "selected" : ""}>${text}</option>`).join("")}</select></label></article>`;
     }).join("") || '<p class="kanban-empty">Пока нет поручений</p>'}</div></section>`;
   }).join("")}</div>`;
 }
@@ -339,6 +349,8 @@ async function moveBoardTask(meeting, id, status) {
   }
 }
 $("#task-search").addEventListener("input", renderBoard);
+$("#priority-filter").onchange = renderBoard;
+$("#direction-filter").onchange = renderBoard;
 $("#refresh-board").onclick = () => refreshBoard().catch(e => toast(e.message, true));
 $("#all-tasks").addEventListener("change", e => {
   if (!e.target.matches("[data-board-status]")) return;
@@ -518,6 +530,15 @@ document.addEventListener("click", async (e) => {
       return;
     }
     switch (button.dataset.action) {
+      case "voices":
+        await showVoices();
+        break;
+      case "classify":
+        if (state.dirty) throw Error("Сначала сохраните изменения");
+        state.current = await api(`/api/meetings/${state.current.id}/classify`, json("POST", {}));
+        renderDetail();
+        toast("Категории предложены по тексту. Проверьте их и подтвердите протокол.");
+        break;
       case "telegram":
         await showTelegram();
         break;
@@ -724,4 +745,53 @@ function progressHTML(m) {
     <div class="progress-caption" role="status" aria-live="polite">${esc(label || "Подготовка")}${busy(m) && p.started_at ? ` · ${time(seconds)}` : ""}</div>
     ${busy(m) ? `<p class="small-note">${m.status === "queued" ? "Ожидаем завершения другой обработки." : p.estimated ? "Поэтапная оценка, не прогноз времени. Процент может оставаться на одном значении, пока модель выполняет шаг." : "Прогресс по обработанному аудио. Загрузка модели и длинные фрагменты могут занимать время."} Можно открыть другую встречу.</p>` : ""}
   </section>`;
+}
+
+
+async function showVoices() {
+  if (state.dirty) throw Error("Сначала сохраните изменения текста и протокола");
+  const m = state.current;
+  const result = await api(`/api/meetings/${m.id}/voices`);
+  let dialog = $("#voices-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "voices-dialog";
+    document.body.append(dialog);
+  }
+  dialog.innerHTML = `<div class="dialog-heading"><h2>Голосовые профили</h2><button class="icon-btn" id="voices-close" aria-label="Закрыть голосовые профили">×</button></div>
+    <p>Сравнение тембра с сохранёнными образцами выполняется на этом компьютере. Сначала прослушайте голос и проверьте имя. Это подсказка, а не подтверждение личности.</p>
+    <p class="small-note">Нужно не менее 10 секунд речи без наложения голосов. Порог сходства 0,80 и отрыв от второго кандидата 0,10 — предварительные, точность на независимых записях ещё не измерена. Имена не подставляются автоматически.</p>
+    ${Object.keys(result.candidates).length ? Object.entries(result.candidates).map(([speaker,c]) => `<div class="voice-row"><strong>${esc(m.speakers[speaker] || speaker)}</strong><p class="meta">${esc(speaker)} · ${c.seconds} с чистой речи</p>${c.name ? `<p>Возможно, ${esc(c.name)} · сходство ${c.score}</p><button class="secondary" data-use-voice="${esc(speaker)}">Подставить имя в редактор</button>` : '<p class="small-note">Однозначное совпадение не найдено.</p>'}<label>Имя для нового профиля<input data-voice-name="${esc(speaker)}" maxlength="200" placeholder="Имя или согласованный псевдоним"></label><label class="check-label"><input type="checkbox" data-voice-consent="${esc(speaker)}">Участник разрешил сохранить голосовой профиль; я прослушал и проверил этот голос</label><button class="secondary" data-enroll-voice="${esc(speaker)}" ${c.seconds < 10 ? "disabled" : ""}>Сохранить голосовой профиль</button></div>`).join("") : '<p>Для этой встречи ещё нет голосовых образцов. Для старой записи запустите разделение голосов заново; повторная обработка сбросит протокол.</p>'}
+    <h3>Сохранённые профили</h3><p class="small-note">Имена и голосовые признаки хранятся локально отдельно от встречи. Удаление встречи не удаляет эти профили. Здесь можно удалить профиль; уже подтверждённые имена в протоколах сохранятся.</p>
+    ${result.profiles.map(p => `<div class="voice-profile"><span>${esc(p.name)}</span><button class="text-btn" data-delete-voice="${p.id}">Удалить профиль</button></div>`).join("") || '<p class="small-note">Профилей пока нет.</p>'}`;
+  $("#voices-close").onclick = () => dialog.close();
+  dialog.onclick = async e => {
+    const button = e.target.closest("button");
+    if (!button || button.id === "voices-close") return;
+    button.disabled = true;
+    try {
+      if (button.dataset.useVoice) {
+        const speaker = button.dataset.useVoice;
+        const input = $$("[data-speaker-name]").find(el => el.dataset.speakerName === speaker);
+        if (!input) throw Error("Этот голос отсутствует в транскрипте");
+        input.value = result.candidates[speaker].name;
+        input.dispatchEvent(new Event("input", {bubbles:true}));
+        dialog.close();
+        toast("Имя подставлено. Проверьте и нажмите «Сохранить текст»; протокол потребуется сформировать заново.");
+      } else if (button.dataset.enrollVoice) {
+        const speaker = button.dataset.enrollVoice;
+        const name = $$('[data-voice-name]').find(el => el.dataset.voiceName === speaker).value;
+        const consent = $$('[data-voice-consent]').find(el => el.dataset.voiceConsent === speaker).checked;
+        await api(`/api/meetings/${m.id}/voices`, json("POST", {speaker, name, consent}));
+        await showVoices();
+        toast("Голосовой профиль сохранён локально");
+      } else if (button.dataset.deleteVoice) {
+        await api(`/api/voices/${button.dataset.deleteVoice}`, {method:"DELETE"});
+        await showVoices();
+        toast("Голосовой профиль удалён");
+      }
+    } catch (err) { toast(err.message, true); }
+    finally { button.disabled = false; }
+  };
+  if (!dialog.open) dialog.showModal();
 }

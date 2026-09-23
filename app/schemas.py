@@ -49,6 +49,9 @@ class Task(BaseModel):
     evidence: str = Field(default="", max_length=2000)
     context_evidence: list[Quote] = Field(default_factory=list, max_length=8)
     status: Literal["open", "in_progress", "done"] = "open"
+    priority: Literal["unspecified", "normal", "high"] = "unspecified"
+    direction: Literal["other", "finance", "procurement", "legal", "safety", "operations", "it", "hr"] = "other"
+    classification_reason: str = Field(default="", max_length=1000)
     needs_review: bool = True
 
 
@@ -74,3 +77,9 @@ class ProcessRequest(BaseModel):
     stage: Literal["prepare", "transcribe", "diarize", "analyze"]
     language: Literal["kk", "ru", "auto", "ru_kk"] = "kk"
     num_speakers: int | None = Field(default=None, ge=2, le=20)
+
+
+class VoiceEnrollment(BaseModel):
+    speaker: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=200)
+    consent: bool = False

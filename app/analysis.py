@@ -109,6 +109,9 @@ def ground_protocol(protocol, meeting):
         if task.deadline_text and not any(task.deadline_text in q for q in quotes):
             task.deadline_text = None
         task.due_date = None
+        from .classification import classify
+        for field, value in classify(task.model_dump(mode="json")).items():
+            setattr(task, field, value)
         key = (_key(task.title), task.owner, task.deadline_text)
         if key in seen:
             continue

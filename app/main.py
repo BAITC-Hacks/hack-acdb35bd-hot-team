@@ -24,7 +24,7 @@ from .config import (
     OLLAMA_URL,
     OLLAMA_MODEL,
 )
-from .schemas import ProcessRequest, TranscriptEdit, Protocol, TaskMove
+from .schemas import ProcessRequest, TranscriptEdit, Protocol, TaskMove, VoiceEnrollment
 from .export import docx_bytes, pdf_bytes
 
 jobs = queue.Queue()
@@ -506,5 +506,51 @@ def telegram_notify(ident: str):
         except telegram_bot.BotError as exc:
             raise HTTPException(409, str(exc)) from None
 
+
+
+
+@app.get("/api/meetings/{ident}/voices")
+def voice_candidates(ident: str):
+    from . import voices
+    m = meeting(ident)
+    editable(m)
+    return {"candidates": voices.candidates(ident) if m.get("diarized") else {}, "profiles": voices.profiles()}
+
+
+@app.post("/api/meetings/{ident}/voices")
+def enroll_voice(ident: str, body: VoiceEnrollment):
+    from . import voices
+    with mutation_lock:
+        m = meeting(ident)
+        editable(m)
+        if not m.get("diarized") or body.speaker not in m.get("speakers", {}):
+            raise HTTPException(409, "Сначала разделите голоса и выберите участника.")
+        try:
+            return voices.enroll(ident, body.speaker, body.name, body.consent)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+
+
+@app.delete("/api/voices/{profile_id}")
+def delete_voice(profile_id: str):
+    from . import voices
+    with mutation_lock:
+        if not voices.delete(profile_id):
+            raise HTTPException(404, "Голосовой профиль не найден")
+    return {"deleted": True}
+
+
+@app.post("/api/meetings/{ident}/classify")
+def classify_tasks(ident: str):
+    from .classification import classify
+    with mutation_lock:
+        m = meeting(ident)
+        editable(m)
+        if not m.get("protocol"):
+            raise HTTPException(409, "Сначала создайте протокол")
+        for task in m['protocol']['tasks']:
+            task.update(classify(task))
+        m['protocol']['approved'] = False
+        return store.save(m)
 
 app.mount("/", StaticFiles(directory=ROOT / "app/static", html=True), name="ui")

@@ -1110,3 +1110,11 @@ button.meeting-card {
 .kanban-grip { color: var(--muted); font-size: 24px; line-height: 1; flex-shrink: 0; user-select: none; }
 .kanban-card[draggable="false"] .kanban-grip { opacity: .3; }
 #all-tasks.is-dragging .kanban-column { min-height: 320px; }
+
+.voice-row { padding: 16px 0; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.voice-profile { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.priority-high { background: #fff1df; color: #894b12; }
+.task-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.board-toolbar { flex-wrap: wrap; }
+.board-toolbar select { width: auto; min-width: 160px; flex: 1; }

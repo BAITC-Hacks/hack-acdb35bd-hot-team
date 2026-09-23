@@ -174,6 +174,7 @@ def transcribe(m):
     m["asr_backend"] = ASR_BACKEND
     attach_alternatives(m["segments"], m["asr_alternatives"])
     m["speakers"] = {"SPEAKER_UNKNOWN": "Участник не определён"}
+    (DATA / m["id"] / "voice-samples.json").unlink(missing_ok=True)
     m["diarized"] = False
     m["protocol"] = None
     m["warnings"] = [
@@ -183,6 +184,8 @@ def transcribe(m):
 
 
 def diarize(m):
+    (DATA / m["id"] / "voice-samples.json").unlink(missing_ok=True)
+    m["diarized"] = False
     import torch
     import soundfile as sf
     from pyannote.audio import Pipeline
@@ -202,6 +205,9 @@ def diarize(m):
         report(base + span * fraction, label, True)
     result = pipeline({"waveform": waveform, "sample_rate": sr}, hook=hook, **options)
     report(98, "Сопоставление голосов с текстом", True, True)
+    from .voices import save_samples
+    save_samples(m["id"], result.speaker_diarization.labels(), result.speaker_embeddings,
+                 [(turn.start, turn.end, label) for turn, _, label in result.speaker_diarization.itertracks(yield_label=True)])
     annotation = result.exclusive_speaker_diarization
     turns = [
         (turn.start, turn.end, speaker)
