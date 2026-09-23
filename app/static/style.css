@@ -1072,3 +1072,13 @@ button.meeting-card {
 .stage-progress.stopped progress::-webkit-progress-value { background:#ad3a3a; }
 .progress-caption { margin-top:10px; font-size:14px; }
 @media (prefers-reduced-motion: reduce) { .stage-progress progress::-webkit-progress-value { transition:none; } }
+
+.meeting-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+.meeting-row .meeting-card { flex:1; min-width:0; margin-bottom:0; }
+.meeting-delete { color:#a33434; flex-shrink:0; }
+.meeting-delete:hover:not(:disabled) { background:#fff1f0; border-color:#d9aaaa; }
+@media (max-width:600px) {
+  .meeting-row { flex-wrap:wrap; gap:6px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+  .meeting-row .meeting-card { flex-basis:100%; }
+  .meeting-delete { margin-left:auto; }
+}

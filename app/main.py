@@ -469,6 +469,7 @@ def delete(ident: str):
         with store.connect() as con:
             con.execute("DELETE FROM meetings WHERE id=?", (ident,))
             con.execute("DELETE FROM tg_links WHERE meeting=?", (ident,))
+            con.execute("DELETE FROM tg_actions WHERE meeting=?", (ident,))
         shutil.rmtree(DATA / ident, ignore_errors=True)
     return Response(status_code=204)
 

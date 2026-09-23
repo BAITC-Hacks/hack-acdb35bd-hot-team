@@ -232,3 +232,25 @@ def test_task_context_survives_save_and_rejects_missing_row(client, meeting):
     assert response.json()['protocol']['tasks'][0]['context_evidence'] == task['context_evidence']
     task['context_evidence'][0]['source_id'] = 99
     assert client.put('/api/meetings/test/protocol', json=dict(tasks=[task])).status_code == 422
+
+
+def test_delete_removes_recording_tasks_and_telegram_reminders(client, meeting, tmp_path, monkeypatch):
+    import importlib
+    main = importlib.import_module('app.main')
+    monkeypatch.setattr(main, 'DATA', tmp_path)
+    folder = tmp_path / meeting['id']
+    folder.mkdir()
+    (folder / 'audio.wav').write_bytes(b'test-only')
+    meeting['protocol'] = Protocol(tasks=[dict(title='Тестовое поручение')]).model_dump(mode='json')
+    store.save(meeting)
+    with store.connect() as con:
+        con.execute('INSERT INTO tg_links VALUES (?,?,?,?,?)', ('test','Тест','hash',0,1))
+        con.execute('INSERT INTO tg_actions VALUES (?,?,?,?,?,?)', ('key','test','signature',1,'Тест',1))
+    assert client.delete('/api/meetings/test').status_code == 204
+    assert not folder.exists()
+    assert client.get('/api/meetings/test').status_code == 404
+    assert not client.get('/api/tasks').json()
+    with store.connect() as con:
+        assert con.execute('SELECT COUNT(*) FROM tg_actions WHERE meeting=?', ('test',)).fetchone()[0] == 0
+        assert con.execute('SELECT COUNT(*) FROM tg_links WHERE meeting=?', ('test',)).fetchone()[0] == 0
+    assert client.delete('/api/meetings/test').status_code == 404

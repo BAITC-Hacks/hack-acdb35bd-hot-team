@@ -100,7 +100,7 @@ function renderList() {
     filtered
       .map(
         (m) =>
-          `<button class="meeting-card" data-meeting="${m.id}" type="button"><div class="meeting-symbol">▤</div><div><h3>${esc(m.title)}</h3><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${m.participants.length} участн. · ${m.task_count} поруч.</div></div>${badge(m)}<span class="meta">↗</span></button>`,
+          `<div class="meeting-row"><button class="meeting-card" data-meeting="${m.id}" type="button"><div class="meeting-symbol">▤</div><div><h3>${esc(m.title)}</h3><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${m.participants.length} участн. · ${m.task_count} поруч.</div></div>${badge(m)}<span class="meta">↗</span></button><button class="secondary meeting-delete" data-delete-meeting="${m.id}" aria-label="Удалить встречу: ${esc(m.title)}" title="${busy(m) ? "Дождитесь завершения обработки" : "Удалить встречу"}" ${busy(m) ? "disabled" : ""}>Удалить</button></div>`,
       )
       .join("") ||
     (state.meetings.length
@@ -125,6 +125,40 @@ function mayLeave() {
     !state.dirty || confirm("Есть несохранённые изменения. Покинуть страницу?")
   );
 }
+function confirmMeetingDeletion(meeting) {
+  return new Promise(resolve => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-labelledby", "delete-meeting-title");
+    dialog.innerHTML = `<form method="dialog"><h2 id="delete-meeting-title">Удалить встречу?</h2>
+      <p><strong>${esc(meeting.title)}</strong></p>
+      <p>Будут удалены запись, транскрипт, протокол и поручения с доски. Восстановить встречу будет нельзя.</p>
+      <p class="small-note">Напоминания Telegram будут отменены. Уже отправленные сообщения останутся в чате.</p>
+      <div class="actions"><button class="secondary" value="cancel" autofocus>Отмена</button><button class="secondary meeting-delete" value="delete">Удалить безвозвратно</button></div></form>`;
+    dialog.addEventListener("close", () => {
+      const confirmed = dialog.returnValue === "delete";
+      dialog.remove();
+      resolve(confirmed);
+    }, {once:true});
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+async function deleteMeeting(id) {
+  const m = state.meetings.find(m => m.id === id) || (state.current?.id === id ? state.current : null);
+  if (!m || busy(m)) return;
+  if (!(await confirmMeetingDeletion(m))) return;
+  await api(`/api/meetings/${id}`, {method: "DELETE"});
+  if (state.current?.id === id) {
+    state.current = null;
+    state.dirty = false;
+    state.transcriptDirty = false;
+  }
+  showView("list");
+  await refreshList();
+  toast("Встреча удалена");
+}
+
 async function openMeeting(id) {
   if (!mayLeave()) return;
   state.current = await api(`/api/meetings/${id}`);
@@ -409,6 +443,10 @@ document.addEventListener("click", async (e) => {
   const button = e.target.closest("button");
   if (!button || button.disabled) return;
   try {
+    if (button.dataset.deleteMeeting) {
+      await deleteMeeting(button.dataset.deleteMeeting);
+      return;
+    }
     if (button.dataset.meeting) {
       await openMeeting(button.dataset.meeting);
       return;
@@ -506,13 +544,7 @@ document.addEventListener("click", async (e) => {
         renderDetail();
         break;
       case "delete":
-        if (confirm("Удалить встречу, аудио и протокол с этого компьютера?")) {
-          await api(`/api/meetings/${state.current.id}`, { method: "DELETE" });
-          state.dirty = false;
-          state.current = null;
-          showView("list");
-          await refreshList();
-        }
+        await deleteMeeting(state.current.id);
         break;
     }
   } catch (err) {
