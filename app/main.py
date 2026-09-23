@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from . import store
+from . import store, telegram_bot
 from .config import (
     DATA,
     ROOT,
@@ -67,9 +67,18 @@ def process_jobs():
 @asynccontextmanager
 async def lifespan(app):
     store.init()
+    telegram_bot.init()
+    bot_stop = threading.Event()
+    bot_thread = None
+    if telegram_bot.enabled():
+        bot_thread = threading.Thread(target=telegram_bot.poll, args=(bot_stop,), daemon=True)
+        bot_thread.start()
     thread = threading.Thread(target=process_jobs, daemon=True)
     thread.start()
     yield
+    bot_stop.set()
+    if bot_thread:
+        bot_thread.join(timeout=36)
     if active_process and active_process.poll() is None:
         active_process.terminate()
     while not jobs.empty():
@@ -156,7 +165,10 @@ def health():
         "local_only": True,
         "ffmpeg": bool(shutil.which("ffmpeg")),
         "models": {
-            key: {"name": repo, "cached": available(repo)}
+            key: {
+                "name": OLLAMA_MODEL if key == "llm" and LLM_BACKEND == "ollama" else repo,
+                "cached": available(repo),
+            }
             for key, repo in [
                 ("asr", ASR_MODEL),
                 ("llm", LLM_MODEL),
@@ -392,8 +404,40 @@ def delete(ident: str):
         editable(m)
         with store.connect() as con:
             con.execute("DELETE FROM meetings WHERE id=?", (ident,))
+            con.execute("DELETE FROM tg_links WHERE meeting=?", (ident,))
         shutil.rmtree(DATA / ident, ignore_errors=True)
     return Response(status_code=204)
+
+
+@app.get("/api/meetings/{ident}/telegram")
+def telegram_status(ident: str):
+    meeting(ident)
+    return {"enabled": telegram_bot.enabled(), "links": telegram_bot.links(ident)}
+
+
+@app.post("/api/meetings/{ident}/telegram/invite")
+def telegram_invite(ident: str, body: dict):
+    with mutation_lock:
+        m = meeting(ident)
+        owner = body.get("owner")
+        owners = {t.get("owner") for t in (m.get("protocol") or {}).get("tasks", [])}
+        if not isinstance(owner, str) or not owner.strip() or owner not in owners:
+            raise HTTPException(422, "Select a saved task owner")
+        try:
+            return telegram_bot.invite(ident, owner)
+        except telegram_bot.BotError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+
+@app.post("/api/meetings/{ident}/telegram/notify")
+def telegram_notify(ident: str):
+    with mutation_lock:
+        m = meeting(ident)
+        editable(m)
+        try:
+            return telegram_bot.notify(m)
+        except telegram_bot.BotError as exc:
+            raise HTTPException(409, str(exc)) from None
 
 
 app.mount("/", StaticFiles(directory=ROOT / "app/static", html=True), name="ui")

@@ -1,0 +1,17 @@
+# CPU-only deployment. Versions of the torch family must remain compatible.
+fastapi==0.135.1
+uvicorn==0.41.0
+python-multipart==0.0.22
+python-dotenv==1.2.2
+pydantic==2.12.5
+python-docx==1.2.0
+reportlab==4.5.1
+soundfile==0.14.0
+httpx==0.28.1
+faster-whisper==1.2.1
+pyannote.audio==4.0.7
+torch==2.11.0
+torchaudio==2.11.0
+torchcodec @ https://files.pythonhosted.org/packages/4b/85/3b41034b0f1289423745f918ace2a1e1e86b9c578c2e2461b6afcbb5354a/torchcodec-0.11.1-cp312-cp312-manylinux_2_28_aarch64.whl
+pytest==8.4.2
+pypdf==6.19.0

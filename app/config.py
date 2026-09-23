@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
-DATA = Path(os.environ.get("DATA_DIR", str(ROOT / "data"))).resolve()
+configured_data = Path(os.environ.get("DATA_DIR", "data"))
+DATA = (configured_data if configured_data.is_absolute() else ROOT / configured_data).resolve()
 DATA.mkdir(parents=True, exist_ok=True)
 ASR_MODEL = os.environ.get("ASR_MODEL", "mlx-community/whisper-large-v3-turbo")
 ASR_BACKEND = os.environ.get("ASR_BACKEND", "mlx")

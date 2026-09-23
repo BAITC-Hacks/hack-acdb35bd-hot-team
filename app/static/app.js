@@ -183,7 +183,7 @@ function renderDetail() {
  <div><div class="panel"><div class="panel-title"><h3>Итоги встречи</h3><span class="badge ${p?.approved ? "" : "warn"}">${p?.approved ? "Подтверждено" : "Черновик"}</span></div>
  ${(p?.approved ? [] : m.warnings).map((w) => `<p class="small-note">${esc(w)}</p>`).join("")}
  ${p ? `<label>Краткое содержание<textarea id="summary" class="summary-area" ${isBusy ? "disabled" : ""}>${esc(p.summary)}</textarea></label><label>Решения <span class="meta">по одному на строку</span><textarea id="decisions" ${isBusy ? "disabled" : ""}>${esc(p.decisions.join("\n"))}</textarea></label><div class="panel-title subheading"><span>Поручения · ${p.tasks.length}</span><button class="text-btn" data-action="add-task" ${isBusy ? "disabled" : ""}>＋ Добавить вручную</button></div><div id="task-list">${p.tasks.map((t, i) => taskHTML(t, i, m)).join("") || '<p class="small-note">Поручения не обнаружены. Если они есть в записи, добавьте их вручную.</p>'}</div><div class="protocol-actions"><button class="secondary" data-action="save-protocol" ${isBusy ? "disabled" : ""}>Сохранить черновик</button><button class="primary" data-action="approve" ${isBusy ? "disabled" : ""}>Подтвердить протокол</button></div>` : `<div class="placeholder">После проверки текста нажмите<br>«Создать протокол».<br>ИИ выделит решения и поручения.</div>`}
- </div><div class="panel"><div class="panel-title"><h3>Экспорт протокола</h3><span class="meta">Сохранённая версия</span></div><p class="small-note">${p?.approved ? "Подтверждённый протокол готов к передаче." : "Неподтверждённый документ будет помечен как черновик."}</p><div class="actions"><button class="secondary" data-export="docx" ${!hasText || isBusy ? "disabled" : ""}>↓ DOCX</button><button class="secondary" data-export="pdf" ${!hasText || isBusy ? "disabled" : ""}>↓ PDF</button><button class="secondary" data-export="json" ${!hasText || isBusy ? "disabled" : ""}>↓ JSON</button></div></div></div></div>`;
+ </div><div class="panel"><div class="panel-title"><h3>Экспорт протокола</h3><span class="meta">Сохранённая версия</span></div><p class="small-note">${p?.approved ? "Подтверждённый протокол готов к передаче." : "Неподтверждённый документ будет помечен как черновик."}</p><button class="secondary" data-action="telegram">Telegram · уведомления</button><div class="actions"><button class="secondary" data-export="docx" ${!hasText || isBusy ? "disabled" : ""}>↓ DOCX</button><button class="secondary" data-export="pdf" ${!hasText || isBusy ? "disabled" : ""}>↓ PDF</button><button class="secondary" data-export="json" ${!hasText || isBusy ? "disabled" : ""}>↓ JSON</button></div></div></div></div>`;
   if (isBusy)
     $$(
       "#detail-view input, #detail-view textarea, #detail-view select",
@@ -335,6 +335,30 @@ async function showSystem() {
       .join("") +
     `<p class="small-note">FFmpeg: ${h.ffmpeg ? "установлен" : "не найден"}</p>`;
 }
+async function showTelegram() {
+  if (state.dirty) throw Error("Сначала сохраните изменения");
+  const m = state.current;
+  const status = await api(`/api/meetings/${m.id}/telegram`);
+  let dialog = $("#telegram-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "telegram-dialog";
+    document.body.append(dialog);
+  }
+  const owners = [...new Set((m.protocol?.tasks || []).map(t => t.owner).filter(Boolean))];
+  dialog.innerHTML = `<div class="dialog-heading"><h2>Уведомления Telegram</h2><button class="icon-btn" data-action="tg-close" aria-label="Закрыть">×</button></div>
+  <p class="small-note">Исполнителю отправляются текст поручения и срок через Telegram. Полный транскрипт и аудио не отправляются.</p>
+  ${status.enabled ? `<label>Исполнитель<select id="tg-owner">${owners.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join("")}</select></label>
+  <button class="secondary" data-action="tg-invite" ${owners.length ? "" : "disabled"}>Создать персональную ссылку</button>
+  <p class="small-note">Передайте ссылку выбранному исполнителю. Она действует 24 часа. Новая ссылка отменяет предыдущую привязку этого исполнителя в этом совещании.</p>
+  <div id="tg-link"></div>
+  <p>${status.links.map(l => `${esc(l.owner)}: ${l.connected ? "подключён" : "ожидает Start"}`).join("<br>") || "Пока никто не подключён"}</p>
+  <div class="actions"><button class="secondary" data-action="telegram">Обновить подключения</button><button class="primary" data-action="tg-send" ${m.protocol?.approved ? "" : "disabled"}>Отправить поручения</button></div>
+  <p class="small-note">Отправляются только сохранённые, подтверждённые, незавершённые поручения. Повторное нажатие не дублирует успешно отправленные сообщения.</p>` : '<p>Добавьте TELEGRAM_BOT_TOKEN в .env и перезапустите приложение. Инструкция — в README.</p>'}
+  <div id="tg-result" role="status"></div>`;
+  if (!dialog.open) dialog.showModal();
+}
+
 document.addEventListener("click", async (e) => {
   const button = e.target.closest("button");
   if (!button || button.disabled) return;
@@ -383,6 +407,26 @@ document.addEventListener("click", async (e) => {
       return;
     }
     switch (button.dataset.action) {
+      case "telegram":
+        await showTelegram();
+        break;
+      case "tg-close":
+        $("#telegram-dialog").close();
+        break;
+      case "tg-invite": {
+        const result = await api(`/api/meetings/${state.current.id}/telegram/invite`, json("POST", {owner: $("#tg-owner").value}));
+        $("#tg-link").innerHTML = `<label>Ссылка для исполнителя<input readonly value="${esc(result.url)}"></label>`;
+        break;
+      }
+      case "tg-send": {
+        button.disabled = true;
+        try {
+          const result = await api(`/api/meetings/${state.current.id}/telegram/notify`, json("POST", {}));
+          const labels = {sent: "отправлено", already_sent: "уже отправлено", not_connected: "не подключён", unknown: "доставка не подтверждена — проверьте чат; повтор автоматически отключён"};
+          $("#tg-result").textContent = result.results.map(r => `${r.owner || "Без исполнителя"}: ${labels[r.state]}`).join("; ") || "Нет открытых поручений";
+        } finally { button.disabled = false; }
+        break;
+      }
       case "back":
         if (mayLeave()) {
           state.dirty = false;

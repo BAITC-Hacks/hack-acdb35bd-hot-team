@@ -1,0 +1,40 @@
+name: hackalem
+x-common: &common
+  image: hackalem-minutes:local
+  build: .
+  init: true
+  volumes:
+    - models:/models
+    - meetings:/data
+  environment: &environment
+    ASR_BACKEND: cpu
+    ASR_MODEL: Systran/faster-whisper-large-v3-turbo
+    LLM_BACKEND: ollama
+    OLLAMA_MODEL: qwen3:4b
+    OLLAMA_URL: http://127.0.0.1:11434
+    OLLAMA_HOST: 127.0.0.1:11434
+    OLLAMA_NO_CLOUD: "1"
+    DATA_DIR: /data
+    HF_HOME: /models/huggingface
+    OLLAMA_MODELS: /models/ollama
+    HF_HUB_DISABLE_TELEMETRY: "1"
+    PYANNOTE_METRICS_ENABLED: "0"
+services:
+  app:
+    <<: *common
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    environment:
+      <<: *environment
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    stop_grace_period: 45s
+  setup:
+    <<: *common
+    profiles: [setup]
+    command: [prepare]
+    environment:
+      <<: *environment
+      HF_TOKEN: ${HF_TOKEN:-}
+volumes:
+  models:
+  meetings:

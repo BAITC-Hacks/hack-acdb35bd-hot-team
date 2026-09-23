@@ -57,6 +57,7 @@ def _connect_ex(sock, address):
 socket.socket.connect = _connect
 socket.socket.connect_ex = _connect_ex
 os.environ.pop("HF_TOKEN", None)
+os.environ.pop("TELEGRAM_BOT_TOKEN", None)
 
 
 def cached(repo):
