@@ -1,0 +1,26 @@
+[project]
+name = "hackalem-minutes"
+version = "0.1.0"
+description = "Local Russian–Kazakh meeting minutes assistant"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "python-multipart>=0.0.20",
+  "python-dotenv>=1,<2",
+  "pydantic>=2,<3",
+  "python-docx>=1.1,<2",
+  "reportlab>=4,<5",
+  "soundfile>=0.13,<1",
+  "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+mac = ["mlx-whisper==0.4.3", "mlx-lm>=0.28,<1"]
+cpu = ["faster-whisper>=1.1,<2"]
+diarization = ["pyannote.audio>=4,<5"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "pypdf>=5,<7"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

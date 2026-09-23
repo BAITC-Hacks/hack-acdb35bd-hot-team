@@ -18,3 +18,10 @@ models/
 *.m4a
 *.mp4
 *.webm
+*.mov
+*.ogg
+*.flac
+*.sqlite3*
+minutes-*.pdf
+minutes-*.docx
+minutes-*.json

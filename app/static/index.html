@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HackAlem · Протоколы встреч</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a href="#" class="brand"
+        ><span class="brand-icon">h<span>•</span></span
+        ><span>hackalem<small>MEETING WORKSPACE</small></span></a
+      >
+      <div class="workspace">
+        <span class="workspace-icon">H</span>
+        <div>Hot Team<small>Локальное пространство</small></div>
+        <span class="chevron">⌄</span>
+      </div>
+      <div class="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <button id="nav-meetings" class="nav-item active">
+        <span>▤</span> Совещания <b id="nav-count">0</b>
+      </button>
+      <button id="nav-tasks" class="nav-item">
+        <span>☑</span> Все поручения
+      </button>
+      <div class="sidebar-bottom">
+        <div class="privacy-icon">◈</div>
+        <strong>Встречи остаются у вас</strong>
+        <p>Обработка на этом компьютере.<br />Без облачных AI-сервисов.</p>
+        <button class="text-btn" id="show-system">Проверить модели ↗</button>
+      </div>
+      <div class="profile">
+        <span class="avatar">HT</span>
+        <div>Hot Team<small>HackAlem AI · MVP</small></div>
+      </div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <nav class="mobile-nav">
+          <button class="text-btn" id="mobile-meetings">Встречи</button
+          ><button class="text-btn" id="mobile-tasks">Поручения</button
+          ><button class="text-btn" id="mobile-system">Модели</button>
+        </nav>
+        <div id="breadcrumb">Рабочее пространство <span>/</span> Совещания</div>
+        <span class="local-pill"><i></i> Локальный режим</span>
+      </header>
+      <div id="toast" role="status" class="toast hidden"></div>
+      <section id="list-view" class="page">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">ОТ РАЗГОВОРА К ДЕЙСТВИЮ</div>
+            <h1>Ваши совещания</h1>
+            <p>Договорённости, решения и поручения — в одном месте.</p>
+          </div>
+          <button class="primary" id="new-meeting">＋ Новое совещание</button>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span>Всего совещаний</span><strong id="stat-total">0</strong
+            ><small>В вашем пространстве</small>
+          </div>
+          <div class="stat">
+            <span>Поручения</span><strong id="stat-tasks">0</strong
+            ><small>Зафиксированы в протоколах</small>
+          </div>
+          <div class="stat">
+            <span>Обработано записей</span><strong id="stat-ready">0</strong
+            ><small>С готовым транскриптом</small>
+          </div>
+        </div>
+        <div class="section-row">
+          <div class="tabs">
+            <button class="tab active" data-filter="all">Все встречи</button
+            ><button class="tab" data-filter="ready">Готовые протоколы</button
+            ><button class="tab" data-filter="processing">В обработке</button>
+          </div>
+          <input
+            id="search"
+            class="search"
+            type="search"
+            placeholder="Поиск по названию…"
+            aria-label="Поиск совещаний"
+          />
+        </div>
+        <div id="meeting-list"></div>
+        <div class="empty-state hidden" id="empty-state">
+          <div class="empty-art">
+            <div class="sheet-lines">
+              <span></span><span></span><span></span>
+            </div>
+            <span class="sound-badge">▥</span>
+          </div>
+          <h2>Первый протокол начинается с записи</h2>
+          <p>
+            Загрузите аудио или видео. Ассистент подготовит<br />транскрипт,
+            краткое содержание и список поручений.
+          </p>
+          <button class="primary" id="empty-new">＋ Добавить запись</button>
+          <div class="format-note">
+            MP3, WAV, M4A, MP4 · до 250 МБ · до 60 минут
+          </div>
+        </div>
+        <div class="info-strip">
+          <span>✧</span>
+          <div>
+            <strong>Два языка. Один разговор.</strong>
+            <p>
+              Русская, казахская и смешанная речь. Проверяйте важные детали по
+              исходной записи.
+            </p>
+          </div>
+          <span class="language-chip">RU + ҚАЗ</span>
+        </div>
+      </section>
+      <section id="detail-view" class="page hidden"></section>
+      <section id="tasks-view" class="page hidden">
+        <div class="page-heading">
+          <div>
+            <div class="eyebrow">ДОГОВОРЁННОСТИ В РАБОТЕ</div>
+            <h1>Все поручения</h1>
+            <p>Поручения из ваших совещаний. Сроки подтверждаются вручную.</p>
+          </div>
+        </div>
+        <div id="all-tasks"></div>
+      </section>
+    </main>
+    <dialog id="upload-dialog">
+      <form id="upload-form">
+        <div class="dialog-heading">
+          <div>
+            <div class="eyebrow">НОВАЯ ВСТРЕЧА</div>
+            <h2>Добавить совещание</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-btn"
+            id="close-upload"
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+        <label
+          >Название совещания<input
+            name="title"
+            required
+            maxlength="200"
+            placeholder="Например, планирование проекта"
+        /></label>
+        <div class="form-grid">
+          <label
+            >Дата встречи<input
+              name="meeting_date"
+              id="meeting-date"
+              type="date"
+              required /></label
+          ><label
+            >Участники через запятую<input
+              name="participants"
+              placeholder="Айдана, Асет, Данияр"
+              maxlength="3000"
+          /></label>
+        </div>
+        <label class="dropzone" id="dropzone"
+          ><span class="upload-icon">↥</span
+          ><strong id="file-label">Выберите аудио или видео</strong
+          ><span>или перетащите файл сюда</span
+          ><small>MP3, WAV, M4A, MP4, WEBM, OGG, FLAC, MOV</small
+          ><input
+            type="file"
+            name="file"
+            id="audio-file"
+            accept=".mp3,.wav,.m4a,.mp4,.webm,.ogg,.flac,.mov"
+            required
+        /></label>
+        <div class="record-row">
+          <button type="button" class="secondary" id="record-mic">
+            ● Записать микрофон</button
+          ><span id="record-status">Для встречи в комнате</span>
+        </div>
+        <p class="small-note">
+          Перед записью уведомите участников о записи и ИИ-транскрибации. До 60
+          минут и 250 МБ.
+        </p>
+        <div class="dialog-footer">
+          <span>◈ Файл останется на устройстве</span
+          ><button class="primary" id="upload-submit">
+            Создать совещание →
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="system-dialog">
+      <div class="dialog-heading">
+        <h2>Локальные модели</h2>
+        <button class="icon-btn" id="close-system" aria-label="Закрыть">
+          ×
+        </button>
+      </div>
+      <div id="system-content"></div>
+      <p class="small-note">
+        Модели скачиваются отдельно при установке. Обработка записей не
+        использует облачные API. Инструкции — в README.
+      </p>
+    </dialog>
+  </body>
+</html>
