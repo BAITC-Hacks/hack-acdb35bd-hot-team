@@ -150,6 +150,17 @@ def test_edit_invalidates_protocol(client, meeting):
     assert response.status_code == 200 and response.json()["protocol"] is None
 
 
+def test_edit_preserves_only_matching_server_word_timings(client, meeting):
+    meeting["segments"][0]["words"] = [dict(start=0, end=4, word=meeting["segments"][0]["text"])]
+    store.save(meeting)
+    payload = {"segments": meeting["segments"], "speakers": meeting["speakers"]}
+    result = client.put("/api/meetings/test/transcript", json=payload).json()
+    assert result["segments"][0]["words"] == meeting["segments"][0]["words"]
+    payload["segments"][0]["text"] = "Отчёт дайын."
+    result = client.put("/api/meetings/test/transcript", json=payload).json()
+    assert result["segments"][0]["words"] == []
+
+
 def test_busy_edits_and_origin_blocked(client, meeting):
     meeting["status"] = "processing"
     store.save(meeting)

@@ -21,6 +21,7 @@ from .config import (
     OLLAMA_MODEL,
 )
 from .analysis import parse_result, ground_protocol, make_prompt
+from .speech import normalize_words, align_speakers
 
 # Defense in depth: inference processes may only connect to loopback services.
 # Model downloads happen in scripts/download_models.py, never in this process.
@@ -80,6 +81,8 @@ def transcribe(m):
             language=language,
             task="transcribe",
             condition_on_previous_text=False,
+            word_timestamps=True,
+            hallucination_silence_threshold=2.0,
             verbose=False,
         )
         raw = result["segments"]
@@ -93,6 +96,7 @@ def transcribe(m):
             language=language,
             task="transcribe",
             vad_filter=True,
+            word_timestamps=True,
             condition_on_previous_text=False,
         )
         raw = [
@@ -102,6 +106,7 @@ def transcribe(m):
                 text=s.text,
                 avg_logprob=s.avg_logprob,
                 compression_ratio=s.compression_ratio,
+                words=[dict(start=w.start, end=w.end, word=w.word) for w in (s.words or [])],
             )
             for s in segments
         ]
@@ -112,6 +117,8 @@ def transcribe(m):
             start=round(s["start"], 2),
             end=round(min(s["end"], m["duration"]), 2),
             text=s["text"].strip(),
+            words=normalize_words(s.get("words"), round(s["start"], 2),
+                                  round(min(s["end"], m["duration"]), 2), s["text"]),
             speaker="SPEAKER_UNKNOWN",
             uncertain=s.get("avg_logprob", 0) < -1
             or s.get("compression_ratio", 0) > 2.4,
@@ -143,15 +150,7 @@ def diarize(m):
         (turn.start, turn.end, speaker)
         for turn, _, speaker in annotation.itertracks(yield_label=True)
     ]
-    for s in m["segments"]:
-        overlaps = [
-            (max(0, min(s["end"], end) - max(s["start"], start)), speaker)
-            for start, end, speaker in turns
-        ]
-        overlap, speaker = max(overlaps, default=(0, "SPEAKER_UNKNOWN"))
-        s["speaker"] = speaker if overlap else "SPEAKER_UNKNOWN"
-        if overlap < (s["end"] - s["start"]) * 0.6:
-            s["uncertain"] = True
+    m["segments"] = align_speakers(m["segments"], turns)
     labels = sorted(set(s["speaker"] for s in m["segments"]))
     m["speakers"] = {
         label: m.get("speakers", {}).get(
@@ -166,7 +165,7 @@ def diarize(m):
     m["protocol"] = None
     m["status"] = "transcribed"
     m["warnings"] = [
-        "Сопоставьте спикеров с именами. На длинных репликах со сменой говорящего возможны ошибки."
+        "Сопоставьте спикеров с именами. Проверьте границы реплик и одновременную речь. Для старых или исправленных реплик без таймкодов слов применяется сопоставление целой реплики."
     ]
 
 

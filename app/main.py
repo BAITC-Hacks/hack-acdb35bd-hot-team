@@ -333,8 +333,20 @@ def update_transcript(ident: str, body: TranscriptEdit):
         editable(m)
         if any(s.end > m["duration"] + 1 for s in body.segments):
             raise HTTPException(422, "Таймкод находится за пределами записи")
+        previous = {s["id"]: s for s in m["segments"]}
+        segments = []
+        for item in body.segments:
+            segment = item.model_dump()
+            old = previous.get(item.id, {})
+            # Timing belongs to the original audio/text alignment, not to edits
+            # supplied by a client. Preserve it only while text and bounds match.
+            if all(segment[k] == old.get(k) for k in ("text", "start", "end")):
+                segment["words"] = old.get("words", [])
+            else:
+                segment["words"] = []
+            segments.append(segment)
         m.update(
-            segments=[s.model_dump() for s in body.segments],
+            segments=segments,
             speakers=body.speakers,
             protocol=None,
             status="transcribed",
