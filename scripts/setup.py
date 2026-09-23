@@ -45,7 +45,7 @@ def main():
                 example.replace("ASR_BACKEND=mlx", "ASR_BACKEND=cpu")
                 .replace(
                     "ASR_MODEL=mlx-community/whisper-large-v3-turbo",
-                    "ASR_MODEL=Systran/faster-whisper-large-v3-turbo",
+                    "ASR_MODEL=dropbox-dash/faster-whisper-large-v3-turbo",
                 )
                 .replace("LLM_BACKEND=mlx", "LLM_BACKEND=ollama")
             )

@@ -279,7 +279,7 @@ uv sync --frozen --python 3.12 --extra cpu --extra diarization --extra dev
 
 ```dotenv
 ASR_BACKEND=cpu
-ASR_MODEL=Systran/faster-whisper-large-v3-turbo
+ASR_MODEL=dropbox-dash/faster-whisper-large-v3-turbo
 LLM_BACKEND=ollama
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b
