@@ -140,6 +140,8 @@ def transcribe(m):
         for i, s in enumerate(raw)
         if s["text"].strip() and s["start"] < m["duration"]
     ]
+    m["asr_model"] = ASR_MODEL
+    m["asr_backend"] = ASR_BACKEND
     attach_alternatives(m["segments"], m["asr_alternatives"])
     m["speakers"] = {"SPEAKER_UNKNOWN": "Участник не определён"}
     m["diarized"] = False

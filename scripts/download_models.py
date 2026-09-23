@@ -26,6 +26,11 @@ for name in args.models:
                 repo, token=os.environ.get("HF_TOKEN") or None
             )
             del pipeline
+        elif Path(repo).is_dir():
+            print("Using prepared local model", flush=True)
+        elif repo.startswith(("models/", "./", "/")):
+            print("Prepare the local model directory first; see docs/SYBYRLA_BENCHMARK.md", file=sys.stderr)
+            sys.exit(1)
         else:
             snapshot_download(repo)
     except Exception as exc:
