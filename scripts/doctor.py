@@ -106,7 +106,20 @@ def check():
             )
         except Exception:
             report(False, name, "Проверьте установку FFmpeg.")
-    report((ROOT / "app/fonts/NotoSans-Regular.ttf").is_file(), "Шрифт экспорта")
+    for resource in ("templates/protocol.docx", "fonts/LiberationSerif-Regular.ttf",
+                     "fonts/LiberationSerif-Bold.ttf", "fonts/LiberationSerif-Italic.ttf",
+                     "fonts/LiberationSans-Regular.ttf"):
+        report((ROOT / "app" / resource).is_file(), f"Ресурс экспорта: {resource}",
+               "Обновите полный репозиторий; в Docker пересоберите образ.")
+    try:
+        from app.export import docx_bytes, pdf_bytes
+        example = dict(title="Проверка Ә Ғ Қ Ң Ө Ұ Ү Һ І", meeting_date="2026-01-01",
+                       segments=[], protocol=dict(summary="Тест экспорта", tasks=[]))
+        report(docx_bytes(example).startswith(b"PK") and pdf_bytes(example).startswith(b"%PDF"),
+               "Пробный экспорт DOCX/PDF с кириллицей")
+    except Exception as exc:
+        report(False, f"Экспорт: {type(exc).__name__}",
+               "Проверьте шаблон, шрифты и зависимости python-docx/reportlab.")
     try:
         with tempfile.TemporaryFile(dir=DATA) as f:
             f.write(b"ok")
