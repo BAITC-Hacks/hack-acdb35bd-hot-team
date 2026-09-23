@@ -11,3 +11,6 @@
 - Do not describe unimplemented integrations or simulated AI results as working features.
 - Preserve Russian and Kazakh in transcripts. Flag uncertain owners and deadlines.
 - Verify the main user flow and relevant error cases before delivery.
+- Prioritize work against the jury rubric in docs/JURY_CRITERIA.md: value 25,
+  outcome quality 20, innovation 15, growth potential 20, presentation/demo 20.
+  Demonstrate measured outcomes; distinguish implemented capabilities from roadmap.
