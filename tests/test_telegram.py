@@ -75,3 +75,63 @@ def test_expired_and_group_links(bot):
         con.execute('UPDATE tg_links SET expires=?', (time.time()-1,))
     tg.handle({'message': {'chat': {'id': 42, 'type': 'private'}, 'from': {'id': 42}, 'text': '/start '+code}})
     assert not tg.links('m1')[0]['connected']
+
+
+def action(bot):
+    m, sent = bot
+    bind(m)
+    tg.notify(m)
+    return sent[-1]['reply_markup']['inline_keyboard'][0][0]['callback_data'].split(':')[1]
+
+
+def click(key, command, user=42, query_id='q1'):
+    tg.handle({'callback_query': {'id': query_id, 'from': {'id': user}, 'data': command+':'+key,
+        'message': {'message_id': 1, 'chat': {'id': user, 'type': 'private'}}}})
+
+
+def test_complete_authorization_and_repeat(bot):
+    key = action(bot)
+    click(key, 'done', user=99)
+    assert store.get('m1')['protocol']['tasks'][0]['status'] == 'open'
+    click(key, 'done')
+    assert store.get('m1')['protocol']['tasks'][0]['status'] == 'done'
+    click(key, 'done', query_id='q2')
+    assert store.get('m1')['protocol']['tasks'][0]['status'] == 'done'
+
+
+def test_reminder_persists_fires_once_and_done_cancels(bot, monkeypatch):
+    m, sent = bot
+    key = action(bot)
+    monkeypatch.setattr(tg.time, 'time', lambda: 1000)
+    click(key, 's15')
+    tg.init()
+    tg.reminders(1899)
+    before = len(sent)
+    tg.reminders(1900)
+    assert len(sent) == before+1
+    assert 'Напоминание' in sent[-1]['text']
+    tg.reminders(2000)
+    assert len(sent) == before+1
+    click(key, 's60', query_id='q2')
+    click(key, 'done', query_id='q3')
+    before = len(sent)
+    tg.reminders(99999)
+    assert len(sent) == before
+
+
+def test_edited_or_unlinked_task_rejects_old_buttons(bot):
+    key = action(bot)
+    m = store.get('m1'); m['protocol']['tasks'][0]['title'] = 'Changed'
+    store.save(m)
+    click(key, 'done')
+    assert store.get('m1')['protocol']['tasks'][0]['status'] == 'open'
+
+
+def test_replayed_snooze_does_not_shift_time(bot, monkeypatch):
+    key = action(bot)
+    monkeypatch.setattr(tg.time, 'time', lambda: 1000)
+    click(key, 's15')
+    monkeypatch.setattr(tg.time, 'time', lambda: 1500)
+    click(key, 's15')
+    with store.connect() as con:
+        assert con.execute('SELECT due FROM tg_actions WHERE key=?', (key,)).fetchone()[0] == 1900

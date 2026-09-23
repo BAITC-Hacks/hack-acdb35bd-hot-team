@@ -28,7 +28,7 @@ from .schemas import ProcessRequest, TranscriptEdit, Protocol
 from .export import docx_bytes, pdf_bytes
 
 jobs = queue.Queue()
-mutation_lock = threading.Lock()
+mutation_lock = store.mutation_lock
 active_process = None
 
 
@@ -412,7 +412,9 @@ def delete(ident: str):
 @app.get("/api/meetings/{ident}/telegram")
 def telegram_status(ident: str):
     meeting(ident)
-    return {"enabled": telegram_bot.enabled(), "links": telegram_bot.links(ident)}
+    with store.connect() as con:
+        unknown = con.execute("SELECT COUNT(*) FROM tg_actions WHERE meeting=? AND due=-1", (ident,)).fetchone()[0]
+    return {"enabled": telegram_bot.enabled(), "links": telegram_bot.links(ident), "reminders_unknown": unknown}
 
 
 @app.post("/api/meetings/{ident}/telegram/invite")

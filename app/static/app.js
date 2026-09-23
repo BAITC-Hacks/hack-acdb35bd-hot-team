@@ -355,7 +355,7 @@ async function showTelegram() {
   <p>${status.links.map(l => `${esc(l.owner)}: ${l.connected ? "подключён" : "ожидает Start"}`).join("<br>") || "Пока никто не подключён"}</p>
   <div class="actions"><button class="secondary" data-action="telegram">Обновить подключения</button><button class="primary" data-action="tg-send" ${m.protocol?.approved ? "" : "disabled"}>Отправить поручения</button></div>
   <p class="small-note">Отправляются только сохранённые, подтверждённые, незавершённые поручения. Повторное нажатие не дублирует успешно отправленные сообщения.</p>` : '<p>Добавьте TELEGRAM_BOT_TOKEN в .env и перезапустите приложение. Инструкция — в README.</p>'}
-  <div id="tg-result" role="status"></div>`;
+  <div id="tg-result" role="status">${status.reminders_unknown ? "Доставка некоторых напоминаний не подтверждена. Проверьте чат; повтор можно назначить кнопкой в сообщении." : ""}</div>`;
   if (!dialog.open) dialog.showModal();
 }
 
