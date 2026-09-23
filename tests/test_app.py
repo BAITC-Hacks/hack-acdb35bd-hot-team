@@ -130,7 +130,12 @@ def test_review_gate_and_exports(client, meeting):
     text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert "Ә Ғ Қ Ң Ө Ұ Ү Һ І" in text and "Айдана" in text
     doc = Document(io.BytesIO(client.get("/api/meetings/test/export/docx").content))
-    assert "Подготовить отчёт" in "\n".join(p.text for p in doc.paragraphs)
+    assert "Подготовить отчёт" in doc.tables[0].cell(1, 0).text
+    assert [c.text for c in doc.tables[0].rows[0].cells] == ["Поручение", "Ответственный", "Срок"]
+    assert doc.paragraphs[0].text == "Протокол совещания"
+    assert doc.sections[0].page_width.inches == 8.5
+    summary = next(p for p in doc.paragraphs if p.text == "Саммари по ключевым пунктам")
+    assert summary.paragraph_format.page_break_before
 
 
 def test_edit_invalidates_protocol(client, meeting):
@@ -254,3 +259,19 @@ def test_delete_removes_recording_tasks_and_telegram_reminders(client, meeting, 
         assert con.execute('SELECT COUNT(*) FROM tg_actions WHERE meeting=?', ('test',)).fetchone()[0] == 0
         assert con.execute('SELECT COUNT(*) FROM tg_links WHERE meeting=?', ('test',)).fetchone()[0] == 0
     assert client.delete('/api/meetings/test').status_code == 404
+
+
+def test_protocol_export_long_table_and_unknown_owner():
+    from app.export import docx_bytes, pdf_bytes
+    m = dict(title='Тест <план> & отчёт', meeting_date='2026-09-23', segments=[],
+             protocol=dict(summary='Ә Ғ Қ Ң Ө Ұ Ү Һ І', tasks=[
+                 dict(title=('Проверить показатели и подготовить отчёт. ' * 180), needs_review=True)]))
+    pdf = PdfReader(io.BytesIO(pdf_bytes(m)))
+    text = '\n'.join(page.extract_text() for page in pdf.pages)
+    assert len(pdf.pages) >= 3
+    assert 'Тест <план> & отчёт' in text
+    assert 'Требуется проверка' in text
+    doc = Document(io.BytesIO(docx_bytes(m)))
+    assert doc.tables[0].cell(1, 1).text == 'Не указан\nТребуется проверка'
+    assert doc.tables[0].cell(1, 2).text == 'Не указан'
+    assert 'Черновик' in '\n'.join(p.text for p in doc.paragraphs)
