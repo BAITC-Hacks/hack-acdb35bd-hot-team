@@ -42,6 +42,7 @@ class Quote(BaseModel):
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex, pattern=r"^[a-f0-9]{32}$")
     title: str = Field(min_length=1, max_length=1000)
+    topic_id: str | None = Field(default=None, max_length=80)
     owner: str | None = Field(default=None, max_length=200)
     deadline_text: str | None = Field(default=None, max_length=300)
     due_date: date | None = None
@@ -55,7 +56,15 @@ class Task(BaseModel):
     needs_review: bool = True
 
 
+class Topic(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=20000)
+    source_ids: list[int] = Field(default_factory=list, max_length=10000)
+
+
 class Protocol(BaseModel):
+    topics: list[Topic] = Field(default_factory=list, max_length=30)
     summary: str = Field(default="", max_length=20000)
     decisions: list[str] = Field(default_factory=list, max_length=100)
     tasks: list[Task] = Field(default_factory=list, max_length=100)
@@ -65,6 +74,11 @@ class Protocol(BaseModel):
     def unique_task_ids(self):
         if len({t.id for t in self.tasks}) != len(self.tasks):
             raise ValueError("Идентификаторы поручений должны быть уникальны")
+        ids = [t.id for t in self.topics]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Идентификаторы тем должны быть уникальны")
+        if any(t.topic_id and t.topic_id not in ids for t in self.tasks):
+            raise ValueError("Поручение ссылается на отсутствующую тему")
         return self
 
 

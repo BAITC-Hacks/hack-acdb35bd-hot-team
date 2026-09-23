@@ -1118,3 +1118,6 @@ button.meeting-card {
 
 .board-toolbar { flex-wrap: wrap; }
 .board-toolbar select { width: auto; min-width: 160px; flex: 1; }
+
+.topic-editor { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 16px; }
+.topic-task-heading { color: var(--green); margin: 22px 0 12px; }

@@ -234,69 +234,41 @@ def diarize(m):
 
 
 def analyze(m):
+    from .topic_analysis import analyze_topics
     report(0, "Загрузка модели анализа", True, True)
     if LLM_BACKEND == "ollama":
         from urllib.parse import urlparse
         import httpx
-
         url = urlparse(OLLAMA_URL)
-        if (
-            url.scheme != "http"
-            or url.hostname not in ("127.0.0.1", "localhost", "::1")
-            or url.username
-            or url.password
-        ):
+        if (url.scheme != "http" or url.hostname not in ("127.0.0.1", "localhost", "::1")
+                or url.username or url.password):
             raise ValueError("Only local Ollama is allowed")
-        report(20, "Создание протокола · ожидаем локальную модель", True, True)
-        response = httpx.post(
-            OLLAMA_URL.rstrip("/") + "/api/chat",
-            json={
-                "model": OLLAMA_MODEL,
-                "stream": False,
-                "think": False,
-                "format": "json",
-                "messages": [{"role": "user", "content": make_prompt(m)}],
-                "options": {"temperature": 0, "num_ctx": 16384, "num_predict": 3500},
-                "keep_alive": 0,
-            },
-            timeout=1800,
-            trust_env=False,
-        )
-        response.raise_for_status()
-        result = response.json()["message"]["content"]
+        def generate(text, max_tokens):
+            response = httpx.post(OLLAMA_URL.rstrip("/") + "/api/chat", json={
+                "model": OLLAMA_MODEL, "stream": False, "think": False, "format": "json",
+                "messages": [{"role":"user", "content":text}],
+                "options": {"temperature":0, "num_ctx":16384, "num_predict":max_tokens},
+                "keep_alive":0}, timeout=1800, trust_env=False)
+            response.raise_for_status()
+            return response.json()["message"]["content"]
     else:
         from mlx_lm import load, stream_generate
-
-        model, tokenizer = load(cached(LLM_MODEL))
-        prompt = tokenizer.apply_chat_template(
-            [{"role": "user", "content": make_prompt(m)}],
-            tokenize=False,
-            add_generation_prompt=True,
-            enable_thinking=False,
-        )
         from mlx_lm.sample_utils import make_sampler
-
-        report(10, "Чтение транскрипта", True, True)
-        parts = []
-        for i, response in enumerate(stream_generate(
-            model, tokenizer, prompt=prompt, max_tokens=3500,
-            sampler=make_sampler(temp=0),
-            prompt_progress_callback=lambda done, total: report(
-                10 + 10 * done / max(total, 1), "Чтение транскрипта", True),
-        ), 1):
-            parts.append(response.text)
-            report(20, f"Создание протокола · сгенерировано {i} токенов", True)
-        result = "".join(parts)
-    report(90, "Проверка цитат, исполнителей и сроков", True, True)
-    protocol, warnings = ground_protocol(parse_result(result), m)
+        model, tokenizer = load(cached(LLM_MODEL))
+        def generate(text, max_tokens):
+            prompt = tokenizer.apply_chat_template([{"role":"user", "content":text}],
+                tokenize=False, add_generation_prompt=True, enable_thinking=False)
+            return "".join(response.text for response in stream_generate(
+                model, tokenizer, prompt=prompt, max_tokens=max_tokens, sampler=make_sampler(temp=0)))
+    protocol, warnings = analyze_topics(m, generate,
+        progress=lambda percent, label: report(percent, label, True, True))
+    report(95, "Сохранение тем и поручений", True, True)
     recognized_names = named_speakers(m)
     m.setdefault("speakers", {}).update(recognized_names)
     if recognized_names:
         warnings.append("Имена говорящих заполнены по явным представлениям в разговоре.")
     m["protocol"] = protocol
-    m["warnings"] = warnings + [
-        "ИИ подготовил черновик. Проверьте поручения и подтвердите протокол."
-    ]
+    m["warnings"] = warnings + ["ИИ подготовил черновик. Проверьте поручения и подтвердите протокол."]
     m["status"] = "ready"
 
 

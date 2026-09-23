@@ -1,7 +1,7 @@
 import json
 import re
 from pydantic import BaseModel, Field
-from .schemas import Protocol
+from .schemas import Protocol, Quote
 from .speech import repetitive_text as _repetitive
 
 
@@ -47,12 +47,44 @@ def _key(text):
     return " ".join(re.findall(r"\w+", text.casefold()))
 
 
+def _locate_quote(text, segments, action=False):
+    """Recover source spelling/row ids, never construct or join source text."""
+    if not text.strip(): return None
+    for ident, row in segments.items():
+        offset = row['text'].casefold().find(text.casefold())
+        if offset >= 0:
+            return ident, row['text'][offset:offset+len(text)]
+    if not action: return None
+    # A long verbatim action prefix can survive a changed ending/name in a
+    # model quotation. Recover its actual sentence, not the model's wording.
+    clause = re.sub(r"^(?:первое|второе|третье|четвертое|четвёртое|пятое|шестое|седьмое|восьмое|девятое|десятое)[\s—–,:.-]+", '', text, flags=re.I)
+    words = clause.split()
+    for length in range(len(words), 7, -1):
+        prefix = ' '.join(words[:length]).rstrip(' ,.;:')
+        if len(prefix) < 50: continue
+        matches = []
+        for ident, row in segments.items():
+            match = re.search(re.escape(prefix), row['text'], re.I)
+            if match:
+                end = re.search(r'[.!?]', row['text'][match.end():])
+                stop = match.end()+end.end() if end else len(row['text'])
+                matches.append((ident,row['text'][match.start():stop]))
+        if len(matches) == 1: return matches[0]
+    return None
+
+
 def _sources(item, segments):
-    # Do not build a fictitious quote by joining separate speakers' text.
     ids = list(dict.fromkeys(item.source_ids))
     if not ids or any(i not in segments for i in ids) or not item.evidence.strip():
         return []
-    return [i for i in ids if item.evidence in segments[i]["text"] and not _repetitive(segments[i]["text"])]
+    ordered = {i: segments[i] for i in ids}
+    ordered.update({i: row for i, row in segments.items() if i not in ordered})
+    located = _locate_quote(item.evidence, ordered, action=hasattr(item, 'title'))
+    if not located or _repetitive(segments[located[0]]['text']) or _repetitive(located[1]): return []
+    ident, quote = located
+    item.evidence = quote
+    item.source_ids = [ident]
+    return [ident]
 
 
 def ground_protocol(protocol, meeting):
@@ -90,6 +122,33 @@ def ground_protocol(protocol, meeting):
             warnings.append("Поручение исключено: нет точной цитаты-основания или обнаружены повторы.")
             continue
         task.source_ids = ids
+        # Recover omitted nearby address context only when the model already
+        # names that addressee, or the immediately preceding row ends in a name.
+        ordered_rows = list(segments.values())
+        anchor = next(i for i, row in enumerate(ordered_rows) if row['id'] == ids[0])
+        context_safe = all(q.source_id in segments and q.text.casefold() in segments[q.source_id]['text'].casefold() for q in task.context_evidence)
+        if context_safe and anchor > 0 and (not task.owner or task.owner.startswith(('Спикер ', 'SPEAKER_'))):
+            previous = ordered_rows[anchor-1]
+            address = re.search(r"([А-ЯЁӘҒҚҢӨҰҮҺІ][а-яёәғқңөұүһі]+\s+[А-ЯЁӘҒҚҢӨҰҮҺІ][а-яёәғқңөұүһі]+),\s*$", previous['text'])
+            if address:
+                task.owner = address.group(1)
+        if context_safe and task.owner and task.owner.startswith(('Спикер ', 'SPEAKER_')):
+            for row in reversed(ordered_rows[max(0,anchor-3):anchor]):
+                address = re.search(r"([А-ЯЁӘҒҚҢӨҰҮҺІ][а-яёәғқңөұүһі]+\s+[А-ЯЁӘҒҚҢӨҰҮҺІ][а-яёәғқңөұүһі]+),\s*(?:ну-ка|вы|вам|а по|подскажите)", row['text'])
+                if address:
+                    task.owner = address.group(1)
+                    break
+        if task.owner and context_safe:
+            for row in reversed(ordered_rows[max(0, anchor-4):anchor+1]):
+                if re.search(re.escape(task.owner) + r"\s*,", row['text'], re.I):
+                    if len(task.context_evidence) < 8 and not any(q.source_id == row['id'] and q.text == row['text'] for q in task.context_evidence):
+                        task.context_evidence.append(Quote(source_id=row['id'], text=row['text'][:2000]))
+                    break
+        for quote in task.context_evidence:
+            if quote.source_id in segments:
+                located = _locate_quote(quote.text, segments)
+                if located:
+                    quote.source_id, quote.text = located
         valid_context = [q for q in task.context_evidence
                          if q.source_id in segments and q.text in segments[q.source_id]["text"]
                          and not _repetitive(segments[q.source_id]["text"])]
@@ -103,9 +162,30 @@ def ground_protocol(protocol, meeting):
         cited_speakers = {speaker_names.get(segments[i]["speaker"]) for i in ids}
         cited_speakers = {name for name in cited_speakers if name and not name.startswith(("Спикер ", "SPEAKER_", "Участник не определён"))}
         quotes = [task.evidence] + [q.text for q in valid_context]
+        if task.owner:
+            # Correct only an explicit responsibility clause, preserving ASR spelling.
+            from difflib import SequenceMatcher
+            for quote in quotes:
+                explicit = re.search(r"ответственн\w*\s+([^,.;]+)", quote, re.I)
+                if explicit and SequenceMatcher(None, task.owner.casefold(), explicit.group(1).strip().casefold()).ratio() >= .8:
+                    task.owner = explicit.group(1).strip()
+                    break
         if task.owner and not (any(_name_in(task.owner, q) for q in quotes) or task.owner in cited_speakers):
             task.owner = None
             warnings.append("Исполнитель не подтверждён обращением или контекстом. Нужно уточнение.")
+        explicit_deadline = re.search(r"\bсрок\s*[:—-]?\s*([^,.!?]+)", task.evidence, re.I)
+        if explicit_deadline and re.search(r"январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр|недел|пятниц|сред|понедельник|вторник|четверг|суббот|воскресен", explicit_deadline.group(1), re.I):
+            task.deadline_text = explicit_deadline.group(1).strip(' ,;')
+        if task.deadline_text:
+            for quote in quotes:
+                match = re.search(re.escape(task.deadline_text), quote, re.I)
+                if match:
+                    task.deadline_text = match.group()
+                    break
+        if not task.deadline_text or not any(task.deadline_text in q for q in quotes):
+            date_pattern = r"\b(?:до|к)\s+(?:понедельник\w*|вторник\w*|сред[ауые]|четверг\w*|пятниц\w*|суббот\w*|воскресень\w*|[\w-]+(?:\s+[\w-]+)?\s+(?:январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)\w*)|\bна\s+(?:этой|следующей|текущей)\s+неделе"
+            dates = list(dict.fromkeys(re.findall(date_pattern, task.evidence, re.I)))
+            if len(dates) == 1: task.deadline_text = dates[0]
         if task.deadline_text and not any(task.deadline_text in q for q in quotes):
             task.deadline_text = None
         task.due_date = None
@@ -152,6 +232,10 @@ STRICT RULES:
 - Use context_evidence for other rows establishing the named addressee or final agreed deadline.
 - deadline_text is an EXACT time expression within evidence or context_evidence, such as "к пятнице" or "жұма күні". If absent, null. Never invent a date.
 - uncertain=true means the transcript or speaker alignment needs review. Do not repair it by guessing from context.
+- Extract EVERY distinct assignment, including every numbered item in a long row. NEVER compress several assignments into one generic task. Different deadlines/actions mean separate tasks.
+- A suggestion becomes a task when explicitly accepted in the following rows. Resolve addressees and final deadlines across adjacent rows using context_evidence.
+- Keep evidence SHORT and verbatim, preferably the exact action clause. Put owner and deadline quotes in context_evidence if they are outside this clause. Copy original Cyrillic spelling including Kazakh letters.
+- Preserve numbers, percentages, dates, risks and causes in summary facts; do not just report who spoke. Do not use generic speaker labels in factual summaries.
 - Merge repeated confirmations. No explicit assignments means tasks=[].
 Example row: {{"id":0,"speaker":"Асет","text":"Айдана, подготовь отчёт к пятнице."}}
 Example task: {{"title":"Подготовить отчёт","owner":"Айдана","deadline_text":"к пятнице","source_ids":[0],"evidence":"Айдана, подготовь отчёт к пятнице."}}

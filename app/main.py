@@ -381,6 +381,8 @@ def update_protocol(ident: str, body: Protocol):
         if any(i not in valid_ids for t in body.tasks
                for i in t.source_ids + [q.source_id for q in t.context_evidence]):
             raise HTTPException(422, "Поручение ссылается на отсутствующую реплику")
+        if any(i not in valid_ids for topic in body.topics for i in topic.source_ids):
+            raise HTTPException(422, "Тема ссылается на отсутствующую реплику")
         protocol = body.model_dump(mode="json")
         previous = m.get("protocol") or {}
         sources = previous.get("sources", {})
@@ -405,6 +407,7 @@ def audio(ident: str):
 def task_board():
     return [
         {**task, "meeting_id": m["id"], "meeting_title": m["title"],
+         "topic_title": next((topic["title"] for topic in m["protocol"].get("topics", []) if topic["id"] == task.get("topic_id")), None),
          "approved": bool(m["protocol"].get("approved")),
          "busy": m["status"] in ("queued", "processing")}
         for m in store.all_meetings()

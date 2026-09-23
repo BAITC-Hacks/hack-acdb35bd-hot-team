@@ -275,3 +275,17 @@ def test_protocol_export_long_table_and_unknown_owner():
     assert doc.tables[0].cell(1, 1).text == 'Не указан\nТребуется проверка'
     assert doc.tables[0].cell(1, 2).text == 'Не указан'
     assert 'Черновик' in '\n'.join(p.text for p in doc.paragraphs)
+
+
+def test_topic_edits_roundtrip_and_bad_source(client, meeting):
+    protocol = dict(topics=[dict(id='topic-1', title='Планирование', summary='Обсудили отчёт.', source_ids=[0])],
+                    summary='Обсудили отчёт.', tasks=[dict(title='Подготовить отчёт', topic_id='topic-1')])
+    assert client.put('/api/meetings/test/protocol', json=protocol).status_code == 200
+    saved = client.get('/api/meetings/test').json()['protocol']
+    assert saved['topics'][0]['title'] == 'Планирование'
+    assert client.get('/api/tasks').json()[0]['topic_title'] == 'Планирование'
+    saved['topics'][0]['title'] = 'Обновлённая тема'
+    assert client.put('/api/meetings/test/protocol', json=saved).status_code == 200
+    assert client.get('/api/tasks').json()[0]['topic_title'] == 'Обновлённая тема'
+    saved['topics'][0]['source_ids'] = [9999]
+    assert client.put('/api/meetings/test/protocol', json=saved).status_code == 422
