@@ -34,6 +34,11 @@ class TranscriptEdit(BaseModel):
         return self
 
 
+class Quote(BaseModel):
+    source_id: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex, pattern=r"^[a-f0-9]{32}$")
     title: str = Field(min_length=1, max_length=1000)
@@ -42,6 +47,7 @@ class Task(BaseModel):
     due_date: date | None = None
     source_ids: list[int] = Field(default_factory=list, max_length=30)
     evidence: str = Field(default="", max_length=2000)
+    context_evidence: list[Quote] = Field(default_factory=list, max_length=8)
     status: Literal["open", "in_progress", "done"] = "open"
     needs_review: bool = True
 

@@ -20,7 +20,7 @@ from .config import (
     OLLAMA_URL,
     OLLAMA_MODEL,
 )
-from .analysis import parse_result, ground_protocol, make_prompt
+from .analysis import parse_result, ground_protocol, make_prompt, named_speakers
 from .speech import normalize_words, align_speakers, attach_alternatives, repetitive_text
 
 # Defense in depth: inference processes may only connect to loopback services.
@@ -181,7 +181,7 @@ def diarize(m):
     m["protocol"] = None
     m["status"] = "transcribed"
     m["warnings"] = [
-        "Сопоставьте спикеров с именами. Проверьте границы реплик и одновременную речь. Для старых или исправленных реплик без таймкодов слов применяется сопоставление целой реплики."
+        "Имена голосов можно указать при необходимости; обращения к исполнителям анализируются отдельно. Проверьте границы реплик и одновременную речь. Для старых или исправленных реплик без таймкодов слов применяется сопоставление целой реплики."
     ]
 
 
@@ -235,6 +235,10 @@ def analyze(m):
             verbose=False,
         )
     protocol, warnings = ground_protocol(parse_result(result), m)
+    recognized_names = named_speakers(m)
+    m.setdefault("speakers", {}).update(recognized_names)
+    if recognized_names:
+        warnings.append("Имена говорящих заполнены по явным представлениям в разговоре.")
     m["protocol"] = protocol
     m["warnings"] = warnings + [
         "ИИ подготовил черновик. Проверьте поручения и подтвердите протокол."

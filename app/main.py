@@ -369,7 +369,8 @@ def update_protocol(ident: str, body: Protocol):
                 422, "Проверьте каждое поручение перед подтверждением протокола"
             )
         valid_ids = {s["id"] for s in m["segments"]}
-        if any(i not in valid_ids for t in body.tasks for i in t.source_ids):
+        if any(i not in valid_ids for t in body.tasks
+               for i in t.source_ids + [q.source_id for q in t.context_evidence]):
             raise HTTPException(422, "Поручение ссылается на отсутствующую реплику")
         protocol = body.model_dump(mode="json")
         previous = m.get("protocol") or {}

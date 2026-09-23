@@ -155,12 +155,12 @@ function renderDetail() {
  }</div>
  <div class="detail-grid"><div class="panel"><div class="panel-title"><h3>Транскрипт <span class="meta">${m.segments.length} реплик</span></h3><button class="secondary" data-action="save-transcript" ${!hasText || isBusy ? "disabled" : ""}>Сохранить текст</button></div>
  <audio controls class="audio-player" id="player" src="/api/meetings/${m.id}/audio" preload="metadata"></audio>
- <div class="speakers">${Object.entries(m.speakers)
+ <p class="small-note">Исполнители определяются по обращениям в разговоре. Подписывать каждый голос для получения поручений не обязательно.</p><details><summary>Имена голосов · необязательно</summary><div class="speakers">${Object.entries(m.speakers)
    .map(
      ([id, name]) =>
        `<label class="speaker-edit">${esc(id)}<input data-speaker-name="${esc(id)}" value="${esc(name)}" maxlength="200" ${isBusy ? "disabled" : ""}></label>`,
    )
-   .join("")}</div>
+   .join("")}</div></details>
  ${hasText && !m.diarized ? '<p class="small-note">Голоса ещё не разделены автоматически. Можно запустить этап 2.</p>' : ""}
  <div class="transcript-list">${
    m.segments
@@ -191,7 +191,7 @@ function renderDetail() {
 }
 function taskHTML(t, i, m) {
   const source = m.segments.find((s) => t.source_ids.includes(s.id));
-  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>К выполнению</option><option value="in_progress" ${t.status === "in_progress" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
+  return `<article class="task-card" data-task="${i}"><textarea data-field="title" aria-label="Суть поручения">${esc(t.title)}</textarea><div class="task-fields"><label>Ответственный<input data-field="owner" value="${esc(t.owner)}" placeholder="Нужно уточнить"></label><label>Срок из разговора<input data-field="deadline_text" value="${esc(t.deadline_text)}" placeholder="Не указан"></label><label>Подтверждённая дата<input type="date" data-field="due_date" value="${esc(t.due_date)}"></label></div>${t.evidence ? `<div class="task-evidence">«${esc(t.evidence)}» ${source ? `<button class="time-btn" data-seek="${source.start}">▶ ${time(source.start)}</button>` : ""}</div>` : ""}${taskContextHTML(t, m)}<div class="task-footer"><label class="check-label"><input type="checkbox" data-field="reviewed" ${!t.needs_review ? "checked" : ""}>Проверено</label><select data-field="status" aria-label="Статус поручения"><option value="open" ${t.status === "open" ? "selected" : ""}>К выполнению</option><option value="in_progress" ${t.status === "in_progress" ? "selected" : ""}>В работе</option><option value="done" ${t.status === "done" ? "selected" : ""}>Выполнено</option></select><button class="icon-btn" data-remove-task="${i}" aria-label="Удалить поручение">×</button></div></article>`;
 }
 function readProtocol() {
   const original = state.current.protocol;
@@ -634,5 +634,13 @@ function sourcesHTML(protocol, meeting) {
   return `<details><summary>Основания саммари и решений · ${rows.length}</summary>${rows.map((fact) => {
     const segment = meeting.segments.find((s) => fact.source_ids.includes(s.id));
     return `<p class="small-note"><strong>${esc(fact.text)}</strong><br>${segment ? `<button class="time-btn" data-seek="${segment.start}">▶ ${time(segment.start)}</button>` : ""} ${esc(fact.evidence)}</p>`;
+  }).join("")}</details>`;
+}
+
+function taskContextHTML(task, meeting) {
+  if (!task.context_evidence?.length) return "";
+  return `<details><summary>Почему этот исполнитель и срок</summary>${task.context_evidence.map(q => {
+    const segment = meeting.segments.find(s => s.id === q.source_id);
+    return `<p class="small-note">${segment ? `<button class="time-btn" data-seek="${segment.start}">▶ ${time(segment.start)}</button>` : ""} ${esc(q.text)}</p>`;
   }).join("")}</details>`;
 }

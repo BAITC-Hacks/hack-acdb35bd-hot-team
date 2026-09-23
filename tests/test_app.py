@@ -221,3 +221,14 @@ def test_protocol_sources_survive_confirmation_but_not_rewriting(client, meeting
     payload['summary'] = 'Ручное исправление'
     r = client.put('/api/meetings/test/protocol', json=payload)
     assert r.json()['protocol']['sources']['summary'] == []
+
+
+def test_task_context_survives_save_and_rejects_missing_row(client, meeting):
+    task = dict(title='Подготовить отчёт', owner='Айдана', source_ids=[0],
+                evidence=meeting['segments'][0]['text'],
+                context_evidence=[dict(source_id=0, text='Айдана')])
+    response = client.put('/api/meetings/test/protocol', json=dict(tasks=[task]))
+    assert response.status_code == 200
+    assert response.json()['protocol']['tasks'][0]['context_evidence'] == task['context_evidence']
+    task['context_evidence'][0]['source_id'] = 99
+    assert client.put('/api/meetings/test/protocol', json=dict(tasks=[task])).status_code == 422
