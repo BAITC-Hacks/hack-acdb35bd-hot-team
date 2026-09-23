@@ -1073,12 +1073,16 @@ button.meeting-card {
 .progress-caption { margin-top:10px; font-size:14px; }
 @media (prefers-reduced-motion: reduce) { .stage-progress progress::-webkit-progress-value { transition:none; } }
 
-.meeting-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
-.meeting-row .meeting-card { flex:1; min-width:0; margin-bottom:0; }
+/* Keep the trash button visually inside the card, as a sibling of its open button. */
+.meeting-row { position:relative; margin-bottom:12px; }
+.meeting-row .meeting-card { width:100%; min-width:0; margin-bottom:0; padding-right:72px; }
+.meeting-trash { position:absolute; right:18px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:36px; height:36px; padding:0; color:var(--muted); border:0; background:transparent; border-radius:8px; }
+.meeting-trash:hover:not(:disabled) { color:#a33434; background:#fff1f0; }
+.meeting-trash:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+.meeting-trash:disabled { opacity:.35; cursor:not-allowed; }
 .meeting-delete { color:#a33434; flex-shrink:0; }
 .meeting-delete:hover:not(:disabled) { background:#fff1f0; border-color:#d9aaaa; }
 @media (max-width:600px) {
-  .meeting-row { flex-wrap:wrap; gap:6px; padding-bottom:10px; border-bottom:1px solid var(--line); }
-  .meeting-row .meeting-card { flex-basis:100%; }
-  .meeting-delete { margin-left:auto; }
+  .meeting-row .meeting-card { padding-right:56px; }
+  .meeting-trash { right:10px; }
 }

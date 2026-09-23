@@ -100,7 +100,7 @@ function renderList() {
     filtered
       .map(
         (m) =>
-          `<div class="meeting-row"><button class="meeting-card" data-meeting="${m.id}" type="button"><div class="meeting-symbol">▤</div><div><h3>${esc(m.title)}</h3><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${m.participants.length} участн. · ${m.task_count} поруч.</div></div>${badge(m)}<span class="meta">↗</span></button><button class="secondary meeting-delete" data-delete-meeting="${m.id}" aria-label="Удалить встречу: ${esc(m.title)}" title="${busy(m) ? "Дождитесь завершения обработки" : "Удалить встречу"}" ${busy(m) ? "disabled" : ""}>Удалить</button></div>`,
+          `<div class="meeting-row"><button class="meeting-card" data-meeting="${m.id}" type="button"><div class="meeting-symbol">▤</div><div><h3>${esc(m.title)}</h3><div class="meta">${esc(m.meeting_date)} · ${time(m.duration)} · ${m.participants.length} участн. · ${m.task_count} поруч.</div></div>${badge(m)}<span class="meta">↗</span></button><button class="icon-btn meeting-trash" type="button" data-delete-meeting="${m.id}" aria-label="Удалить встречу: ${esc(m.title)}" title="${busy(m) ? "Дождитесь завершения обработки" : "Удалить встречу"}" ${busy(m) ? "disabled" : ""}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>`,
       )
       .join("") ||
     (state.meetings.length
