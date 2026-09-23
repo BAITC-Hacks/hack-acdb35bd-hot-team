@@ -303,7 +303,7 @@ async function showTasks() {
 }
 async function refreshBoard(quiet = false) {
   const rows = await api("/api/tasks");
-  if (state.view !== "tasks") return;
+  if (state.view !== "tasks" || draggedTask || boardMoving) return;
   if (quiet && JSON.stringify(rows) === JSON.stringify(boardTasks)) return;
   boardTasks = rows;
   renderBoard();
@@ -318,21 +318,25 @@ function renderBoard() {
     return `<section class="kanban-column" data-column="${status}" aria-label="${label}"><div class="kanban-heading"><h2>${label}</h2><span class="badge">${rows.length}</span></div><div class="kanban-cards">${rows.map(t => {
       const locked = !t.approved || t.needs_review || t.busy || boardMoving;
       const overdue = t.due_date && t.due_date < today && t.status !== "done";
-      return `<article class="kanban-card" draggable="${!locked}" data-board-task="${t.id}" data-board-meeting="${t.meeting_id}"><h3>${esc(t.title)}</h3><p class="meta">${esc(t.owner || "Исполнитель не указан")}</p><p class="${overdue ? "overdue" : "meta"}">${overdue ? "Просрочено · " : "Срок · "}${esc(t.due_date || t.deadline_text || "не указан")}</p>${!t.approved || t.needs_review ? '<p class="small-note">Черновик · подтвердите протокол встречи</p>' : ""}${t.busy ? '<p class="small-note">Встреча обрабатывается</p>' : ""}<button class="text-btn kanban-source" data-meeting="${t.meeting_id}">${esc(t.meeting_title)} ↗</button><label class="kanban-status">Статус<select data-board-status aria-label="Статус: ${esc(t.title)}" ${locked ? "disabled" : ""}>${Object.entries(taskColumns).map(([value,text]) => `<option value="${value}" ${value === t.status ? "selected" : ""}>${text}</option>`).join("")}</select></label></article>`;
+      return `<article class="kanban-card" draggable="${!locked}" data-board-task="${t.id}" data-board-meeting="${t.meeting_id}"><div class="kanban-card-heading"><h3>${esc(t.title)}</h3><span class="kanban-grip" aria-hidden="true" title="${locked ? "Перемещение недоступно" : "Зажмите карточку и перенесите в другую колонку"}">⠿</span></div><p class="meta">${esc(t.owner || "Исполнитель не указан")}</p><p class="${overdue ? "overdue" : "meta"}">${overdue ? "Просрочено · " : "Срок · "}${esc(t.due_date || t.deadline_text || "не указан")}</p>${!t.approved || t.needs_review ? '<p class="small-note">Перемещение недоступно: проверьте поручения и подтвердите протокол встречи</p>' : ""}${t.busy ? '<p class="small-note">Встреча обрабатывается</p>' : ""}<button class="text-btn kanban-source" data-meeting="${t.meeting_id}">${esc(t.meeting_title)} ↗</button><label class="kanban-status">Статус<select data-board-status aria-label="Статус: ${esc(t.title)}" ${locked ? "disabled" : ""}>${Object.entries(taskColumns).map(([value,text]) => `<option value="${value}" ${value === t.status ? "selected" : ""}>${text}</option>`).join("")}</select></label></article>`;
     }).join("") || '<p class="kanban-empty">Пока нет поручений</p>'}</div></section>`;
   }).join("")}</div>`;
 }
 async function moveBoardTask(meeting, id, status) {
   if (boardMoving) return;
   const task = boardTasks.find(t => t.id === id && t.meeting_id === meeting);
-  if (!task || task.status === status) return;
+  if (!task || task.status === status || !taskColumns[status]) return;
   boardMoving = true;
   renderBoard();
   try {
     await api(`/api/meetings/${meeting}/tasks/${id}`, json("PATCH", {status, expected_status: task.status}));
     toast(`Поручение: ${taskColumns[status]}`);
   } catch (e) { toast(e.message, true); }
-  finally { boardMoving = false; await refreshBoard().catch(e => toast(e.message, true)); }
+  finally {
+    boardMoving = false;
+    renderBoard();
+    await refreshBoard().catch(e => toast(e.message, true));
+  }
 }
 $("#task-search").addEventListener("input", renderBoard);
 $("#refresh-board").onclick = () => refreshBoard().catch(e => toast(e.message, true));
@@ -341,25 +345,48 @@ $("#all-tasks").addEventListener("change", e => {
   const card = e.target.closest("[data-board-task]");
   moveBoardTask(card.dataset.boardMeeting, card.dataset.boardTask, e.target.value);
 });
+function clearBoardDrag() {
+  draggedTask = null;
+  $$(".kanban-card.is-dragging").forEach(el => el.classList.remove("is-dragging"));
+  $$(".kanban-column.drop-target").forEach(el => el.classList.remove("drop-target"));
+  $("#all-tasks").classList.remove("is-dragging");
+}
 $("#all-tasks").addEventListener("dragstart", e => {
   const card = e.target.closest('[data-board-task][draggable="true"]');
-  if (!card) return;
-  draggedTask = {id: card.dataset.boardTask, meeting: card.dataset.boardMeeting};
+  if (!card || boardMoving || e.target.closest("button, select, input, a")) {
+    e.preventDefault();
+    return;
+  }
+  draggedTask = {id: card.dataset.boardTask, meeting: card.dataset.boardMeeting,
+    status: card.closest("[data-column]").dataset.column};
   e.dataTransfer.setData("text/plain", card.dataset.boardTask);
   e.dataTransfer.effectAllowed = "move";
+  card.classList.add("is-dragging");
+  $("#all-tasks").classList.add("is-dragging");
 });
 $("#all-tasks").addEventListener("dragover", e => {
-  if (draggedTask && e.target.closest("[data-column]")) e.preventDefault();
+  const column = e.target.closest("[data-column]");
+  if (!draggedTask || !column) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = column.dataset.column === draggedTask.status ? "none" : "move";
+  $$(".kanban-column.drop-target").forEach(el => {
+    if (el !== column) el.classList.remove("drop-target");
+  });
+  column.classList.toggle("drop-target", column.dataset.column !== draggedTask.status);
+});
+$("#all-tasks").addEventListener("dragleave", e => {
+  const column = e.target.closest("[data-column]");
+  if (column && !column.contains(e.relatedTarget)) column.classList.remove("drop-target");
 });
 $("#all-tasks").addEventListener("drop", e => {
   const column = e.target.closest("[data-column]");
   if (!column || !draggedTask) return;
   e.preventDefault();
   const task = draggedTask;
-  draggedTask = null;
+  clearBoardDrag();
   moveBoardTask(task.meeting, task.id, column.dataset.column);
 });
-$("#all-tasks").addEventListener("dragend", () => { draggedTask = null; });
+$("#all-tasks").addEventListener("dragend", clearBoardDrag);
 function openUpload() {
   state.recorded = null;
   $("#upload-form").reset();

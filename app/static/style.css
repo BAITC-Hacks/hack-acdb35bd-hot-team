@@ -1100,3 +1100,13 @@ button.meeting-card {
   .meeting-row .meeting-card { padding-right:56px; }
   .meeting-trash { right:10px; }
 }
+
+/* Drag targets remain visible even when a column has no cards. */
+.kanban-column { transition: border-color .15s, box-shadow .15s; }
+.kanban-column.drop-target { border-color: var(--green); box-shadow: inset 0 0 0 2px var(--green); }
+.kanban-card.is-dragging { opacity: .45; cursor: grabbing; }
+.kanban-card-heading { display: flex; align-items: flex-start; gap: 10px; }
+.kanban-card-heading h3 { flex: 1; }
+.kanban-grip { color: var(--muted); font-size: 24px; line-height: 1; flex-shrink: 0; user-select: none; }
+.kanban-card[draggable="false"] .kanban-grip { opacity: .3; }
+#all-tasks.is-dragging .kanban-column { min-height: 320px; }
